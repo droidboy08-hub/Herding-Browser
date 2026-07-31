@@ -1,0 +1,9 @@
+# Xcode build output (regenerable — ~230 MB)
+prototype/build/
+prototype/build-device/
+**/DerivedData/
+**/*.xcuserstate
+**/xcuserdata/
+
+# macOS
+.DS_Store
