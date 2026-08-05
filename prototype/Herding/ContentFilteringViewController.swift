@@ -15,6 +15,7 @@ final class ContentFilteringViewController: UIViewController {
         case bundled
         case catalog
         case customRules
+        case video
 
         var title: String {
             switch self {
@@ -22,6 +23,7 @@ final class ContentFilteringViewController: UIViewController {
             case .bundled:     return "Built-in Filter Lists"
             case .catalog:     return "Default Filter Lists"
             case .customRules: return "Custom Filters"
+            case .video:       return "Playback"
             }
         }
 
@@ -42,6 +44,9 @@ final class ContentFilteringViewController: UIViewController {
                      + "degrade browsing speeds."
             case .customRules:
                 return "Your own rules, applied after every list above."
+            case .video:
+                return "Hiding parts of a page is what the lists above do, so "
+                     + "the ones worth a switch of their own live here too."
             }
         }
     }
@@ -186,6 +191,7 @@ extension ContentFilteringViewController: UITableViewDataSource, UITableViewDele
         case .bundled:     return FilterListSource.allCases.count
         case .catalog:     return FilterListCatalog.entries.count + 1  // + Update Lists
         case .customRules: return 1
+        case .video:       return 1
         case .none:        return 0
         }
     }
@@ -269,6 +275,12 @@ extension ContentFilteringViewController: UITableViewDataSource, UITableViewDele
             }
             cell.selectionStyle = .none
 
+        case .video:
+            var cfg = UIListContentConfiguration.cell()
+            cfg.text = "Media"
+            cell.contentConfiguration = cfg
+            cell.accessoryType = .disclosureIndicator
+
         case .customRules:
             var cfg = UIListContentConfiguration.valueCell()
             cfg.text = "Edit Custom Filters"
@@ -321,6 +333,9 @@ extension ContentFilteringViewController: UITableViewDataSource, UITableViewDele
             }
         case .customRules:
             presentCustomRules()
+        case .video:
+            navigationController?.pushViewController(MediaSettingsViewController(),
+                                                     animated: true)
         default:
             break
         }

@@ -641,7 +641,6 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                             Settings.backgroundPlayback = on
                             NotificationCenter.default.post(name: .mediaSettingsChanged, object: nil)
                         }),
-                .action("Video"),
             ], footer: "Background audio keeps sound going when you leave the "
                      + "app or lock the screen."),
             SettingsSection(title: "About", rows: [
@@ -992,8 +991,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 switch title {
                 case "Downloads":       onShowDownloads?()
                 case "Buttons":         onShowStartBoxButtons?()
-                case "Content Filtering": onShowContentFiltering?()
-                case "Media":           onShowMediaSettings?()
+                case "Content Blocking": onShowContentFiltering?()
                 case "Wallpaper":       onShowAppearance?()
                 case "App Icon":        onShowAppIcon?()
                 case "Passwords":       onShowPasswords?()
@@ -1003,7 +1001,13 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 case "Report a Site Problem": onOpenSupport?(.siteProblem)
                 case "Privacy Policy":  onShowLegal?(.privacy)
                 case "Terms of Use":    onShowLegal?(.terms)
-                default:                break
+                default:
+                    // These rows are wired by title, so renaming one in the list
+                    // above without renaming it here silently unhooks it — the
+                    // row still draws, still highlights, and does nothing. Loud
+                    // in debug so the next rename fails at the tap instead of in
+                    // a bug report.
+                    assertionFailure("Settings row \"\(title)\" has no action")
                 }
             case .searchEnginePicker, .startPagePicker, .blockingLevelPicker,
                  .toggle, .slider, .version:

@@ -8,9 +8,6 @@
         {
           "blend-mode-specializations" : [
             {
-              "value" : "normal"
-            },
-            {
               "appearance" : "tinted",
               "value" : "normal"
             }
@@ -18,28 +15,15 @@
           "fill-specializations" : [
             {
               "value" : {
-                "linear-gradient" : [
-                  "extended-gray:0.00000,1.00000",
-                  "display-p3:0.20598,0.17106,0.25403,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.5,
-                    "y" : 0
-                  },
-                  "stop" : {
-                    "x" : 0.5281573116691285,
-                    "y" : 0.8725578149920256
-                  }
-                }
+                "solid" : "extended-gray:0.00000,1.00000"
               }
             },
             {
               "appearance" : "dark",
               "value" : {
                 "linear-gradient" : [
-                  "extended-gray:0.75000,1.00000",
-                  "extended-gray:0.25000,1.00000"
+                  "display-p3:0.82500,0.82500,0.82500,1.00000",
+                  "extended-gray:0.75000,1.00000"
                 ],
                 "orientation" : {
                   "start" : {
@@ -56,7 +40,20 @@
             {
               "appearance" : "tinted",
               "value" : {
-                "automatic-gradient" : "extended-gray:0.75000,1.00000"
+                "linear-gradient" : [
+                  "display-p3:0.22294,0.27332,0.17397,1.00000",
+                  "display-p3:0.19420,0.58082,0.62885,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.5,
+                    "y" : 1
+                  },
+                  "stop" : {
+                    "x" : 0.5,
+                    "y" : 0.3
+                  }
+                }
               }
             }
           ],
@@ -73,19 +70,70 @@
               "value" : true
             }
           ],
-          "image-name" : "low.png",
-          "name" : "low",
-          "opacity-specializations" : [
+          "hidden" : true,
+          "image-name" : "Herding1.png",
+          "name" : "Herding1",
+          "position" : {
+            "scale" : 0.9,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "display-p3:0.07745,0.25461,0.33262,1.00000",
+                  "display-p3:0.00901,0.01109,0.01266,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.5,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 0.5,
+                    "y" : 0.7
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "extended-gray:0.75000,1.00000"
+              }
+            },
             {
               "appearance" : "tinted",
-              "value" : 1
+              "value" : {
+                "solid" : "display-p3:0.94039,0.90534,0.85104,1.00000"
+              }
             }
           ],
+          "glass-specializations" : [
+            {
+              "value" : true
+            },
+            {
+              "appearance" : "dark",
+              "value" : true
+            },
+            {
+              "appearance" : "tinted",
+              "value" : true
+            }
+          ],
+          "image-name" : "Herding2.png",
+          "name" : "Herding2",
           "position" : {
             "scale" : 1,
             "translation-in-points" : [
-              36.1328125,
-              -64.34375
+              33,
+              -65.50000000000006
             ]
           }
         }
