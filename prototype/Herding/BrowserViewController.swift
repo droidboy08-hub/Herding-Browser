@@ -102,7 +102,10 @@ final class BrowserViewController: UIViewController {
 
     /// The two things a downward drag can do, only one of them live at a time.
     /// Held so the setting can switch between them without rebuilding the page.
-    private var revealSwipe: UISwipeGestureRecognizer?
+    private var revealPan: UIPanGestureRecognizer?
+    /// The drag already opened the start page; further movement in the same
+    /// gesture must not open it again.
+    private var revealPanFired = false
     /// How far below the safe area a downward swipe may start and still open the
     /// start box. Generous on purpose: there is no chrome marking the band, so a
     /// thin strip would be something to miss rather than something to aim at.
@@ -1478,13 +1481,41 @@ final class BrowserViewController: UIViewController {
     }
 
     private func setupGestures() {
-        // Swipe down anywhere -> reveal the start box to type a new address.
-        let swipe = UISwipeGestureRecognizer(target: self, action: #selector(revealHome))
-        swipe.direction = .down
-        swipe.delegate = self
-        webView.addGestureRecognizer(swipe)
-        revealSwipe = swipe
+        // A pan, not a swipe. `UISwipeGestureRecognizer` recognises at a fixed
+        // distance it doesn't expose, so how far you have to drag could never be
+        // a setting. A pan reports the distance and lets the threshold be one.
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(revealPanChanged))
+        pan.delegate = self
+        // The page keeps its touches. At the top of a document a downward drag
+        // only rubber-bands, and taking that away would make the page feel stuck
+        // while the drag is still being measured.
+        pan.cancelsTouchesInView = false
+        pan.delaysTouchesBegan = false
+        webView.addGestureRecognizer(pan)
+        revealPan = pan
         configureSwipeDownBehaviour()
+    }
+
+    /// Open the start page once the drag has gone far enough down.
+    ///
+    /// Fires mid-gesture rather than on release, which is what the swipe
+    /// recogniser did and what the drag should still feel like.
+    @objc private func revealPanChanged(_ pan: UIPanGestureRecognizer) {
+        switch pan.state {
+        case .changed:
+            guard !revealPanFired else { return }
+            let moved = pan.translation(in: view)
+            // Downward, and more vertical than horizontal — a diagonal drag
+            // belongs to the page.
+            guard moved.y >= Settings.revealSwipeDistance,
+                  abs(moved.y) > abs(moved.x) * 1.5 else { return }
+            revealPanFired = true
+            revealHome()
+        case .ended, .cancelled, .failed:
+            revealPanFired = false
+        default:
+            break
+        }
     }
 
     /// Point the downward drag at whichever job the user picked.
@@ -1500,7 +1531,7 @@ final class BrowserViewController: UIViewController {
     /// is the real thing, and it is what every other browser puts there.
     private func configureSwipeDownBehaviour() {
         let wantsReload = Settings.swipeDownAction == .reloadPage
-        revealSwipe?.isEnabled = !wantsReload
+        revealPan?.isEnabled = !wantsReload
         updateRefreshButtonAction()
 
         guard wantsReload else {

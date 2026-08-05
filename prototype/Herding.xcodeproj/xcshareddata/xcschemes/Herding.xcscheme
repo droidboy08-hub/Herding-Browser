@@ -25,9 +25,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A1000001000000000000050"
-               BuildableName = "MinimalBrowser.app"
-               BlueprintName = "MinimalBrowser"
-               ReferencedContainer = "container:MinimalBrowser.xcodeproj">
+               BuildableName = "Herding.app"
+               BlueprintName = "Herding"
+               ReferencedContainer = "container:Herding.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -55,9 +55,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A1000001000000000000050"
-            BuildableName = "MinimalBrowser.app"
-            BlueprintName = "MinimalBrowser"
-            ReferencedContainer = "container:MinimalBrowser.xcodeproj">
+            BuildableName = "Herding.app"
+            BlueprintName = "Herding"
+            ReferencedContainer = "container:Herding.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -71,9 +71,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A1000001000000000000050"
-            BuildableName = "MinimalBrowser.app"
-            BlueprintName = "MinimalBrowser"
-            ReferencedContainer = "container:MinimalBrowser.xcodeproj">
+            BuildableName = "Herding.app"
+            BlueprintName = "Herding"
+            ReferencedContainer = "container:Herding.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
    </ProfileAction>

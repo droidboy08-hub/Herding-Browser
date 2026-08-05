@@ -80,6 +80,24 @@ enum Settings {
         }
     }
 
+    /// How readily a downward drag opens the start page, 0 (least) to 1 (most).
+    ///
+    /// Stored as a dial rather than a distance because that is what the slider
+    /// is: turning it up should mean "more sensitive", and a smaller number
+    /// meaning a lighter touch reads backwards everywhere it is used.
+    static var revealSwipeSensitivity: Float {
+        get { d.object(forKey: "settings.revealSwipeSensitivity") == nil
+                ? 0.5 : d.float(forKey: "settings.revealSwipeSensitivity") }
+        set { d.set(min(max(newValue, 0), 1), forKey: "settings.revealSwipeSensitivity") }
+    }
+
+    /// How far down the drag must travel, from the dial above. The range starts
+    /// well clear of a stray finger and stops short of a full screen's drag.
+    static var revealSwipeDistance: CGFloat {
+        let sensitivity = CGFloat(min(max(revealSwipeSensitivity, 0), 1))
+        return 130 - 100 * sensitivity
+    }
+
     /// Open the second box together with the start box, rather than waiting for
     /// one of the row's buttons to be tapped.
     ///
@@ -335,11 +353,11 @@ enum Settings {
 
 extension Notification.Name {
     /// The interface style or the wallpaper changed.
-    static let appearanceChanged = Notification.Name("MinimalBrowser.appearanceChanged")
+    static let appearanceChanged = Notification.Name("Herding.appearanceChanged")
     /// Something changed that alters which scripts are injected into a page.
     /// The listener rebuilds the script set and reloads, because a viewport is
     /// applied while the document is loading and can't be revised afterwards.
-    static let pageScriptsChanged = Notification.Name("MinimalBrowser.pageScriptsChanged")
+    static let pageScriptsChanged = Notification.Name("Herding.pageScriptsChanged")
 }
 
 /// A button that can sit in the start box's top row.
@@ -401,8 +419,8 @@ enum StartPage: String, CaseIterable, Codable {
 
     var name: String {
         switch self {
-        case .startBox:    return "Start Box"
-        case .lastVisited: return "Last Visited"
+        case .startBox:    return "Home"
+        case .lastVisited: return "Last Page"
         }
     }
 }
@@ -417,7 +435,7 @@ enum SwipeDownAction: String, CaseIterable, Codable {
 
     var name: String {
         switch self {
-        case .startBox:   return "Start Box"
+        case .startBox:   return "Open Home"
         case .reloadPage: return "Reload Page"
         }
     }

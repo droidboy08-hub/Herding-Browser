@@ -534,6 +534,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
         case startPagePicker
         case blockingLevelPicker
         case toggle(String, get: () -> Bool, set: (Bool) -> Void)
+        case slider(String, get: () -> Float, set: (Float) -> Void)
         case action(String)
         case destructive(String)
         case version
@@ -552,12 +553,10 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
             SettingsSection(title: "General", rows: [
                 .searchEnginePicker,
                 .startPagePicker,
-                .toggle("Zoom",
+                .toggle("Allow pinch to zoom",
                         get: { Settings.allowZoom },
                         set: { Settings.allowZoom = $0 }),
-            ], footer: "Zoom lets you pinch any page, including the ones that "
-                     + "switch it off. Off, pages stay at one scale so a pinch "
-                     + "is free for something else."),
+            ], footer: "Zoom works even on sites that switch it off."),
             SettingsSection(title: "History", rows: [
                 .toggle("Group repeat visits",
                         get: { Settings.groupRepeatedVisits },
@@ -581,7 +580,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                             NotificationCenter.default.post(name: .contentBlockingChanged,
                                                             object: nil)
                         }),
-                .toggle("Block scripts",
+                .toggle("Block JavaScript",
                         get: { Settings.blockJavaScript },
                         set: { on in
                             Settings.blockJavaScript = on
@@ -595,13 +594,13 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                             NotificationCenter.default.post(name: .contentBlockingChanged,
                                                             object: nil)
                         }),
-                .toggle("Block redirect pages",
+                .toggle("Block pop-ups and redirects",
                         get: { Settings.blockRedirectPages },
                         set: { Settings.blockRedirectPages = $0 }),
-                .toggle("Use HTTPS only",
+                .toggle("HTTPS-Only Mode",
                         get: { Settings.httpsOnly },
                         set: { Settings.httpsOnly = $0 }),
-                .action("Content Filtering"),
+                .action("Content Blocking"),
                 .action("Passwords"),
                 // These two had handlers written for them and no row to reach
                 // them from — a browser that can't be told to forget anything
@@ -609,41 +608,30 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 .destructive("Clear History"),
                 .destructive("Clear Website Data"),
             ], footer: Settings.blockingLevel.summary
-                     + "\n\nBlocking redirect pages stops any site opening "
-                     + "another site's page over the one you asked for. It "
-                     + "ignores the filter lists and the level above — it "
-                     + "applies everywhere, including to domains no list has "
-                     + "caught up with. A site's own pop-ups still open, so "
-                     + "banking and checkout flows are unaffected."
-                     + "\n\nFingerprinting defences make this device's canvas, "
-                     + "audio and hardware readings differ per site. Blocking "
-                     + "scripts stops pages running any JavaScript — the "
-                     + "strongest setting here, and the one most likely to "
-                     + "break a site."),
-            SettingsSection(title: "Start Box", rows: [
+                     + "\n\nBlocking JavaScript is the strongest setting here, "
+                     + "and the most likely to break a site."),
+            SettingsSection(title: "Home", rows: [
                 .action("Buttons"),
-                .toggle("Favourite sites",
+                .toggle("Favourites",
                         get: { Settings.showFavourites },
                         set: { Settings.showFavourites = $0 }),
-                .toggle("Always show second box",
+                .toggle("Always show panel",
                         get: { Settings.startBoxShowsPanel },
                         set: { Settings.startBoxShowsPanel = $0 }),
-            ], footer: "Buttons: which \(Settings.startBoxButtonCapacity) sit "
-                     + "along the top of the box.\n\n"
-                     + "Favourite sites keeps up to \(FavouritesStore.capacity) "
-                     + "sites under the search field. Tap + to add the page "
-                     + "you're on; hold one to remove it.\n\n"
-                     + "Always show second box opens the panel with the start "
-                     + "box, on whichever of tabs, history or downloads it was "
-                     + "left. Off, it waits for one of the buttons."),
+                .slider("Swipe sensitivity",
+                        get: { Settings.revealSwipeSensitivity },
+                        set: { Settings.revealSwipeSensitivity = $0 }),
+            ], footer: "Favourites: tap + to keep the page you're on, hold to "
+                     + "remove.\n\nSwipe sensitivity sets how far you drag "
+                     + "down a page to open Home."),
             SettingsSection(title: "Appearance", rows: [
                 .toggle("Dark mode",
                         get: { Settings.darkMode },
                         set: { Settings.darkMode = $0 }),
                 .action("App Icon"),
                 .action("Wallpaper"),
-            ], footer: "Dark mode off follows the system setting."),
-            SettingsSection(title: "Playback", rows: [
+            ], footer: "Dark mode off follows the system."),
+            SettingsSection(title: "Media", rows: [
                 // One switch for both halves: claiming the audio session and
                 // telling the page it is still visible only work together, and
                 // off by default because some video sites' terms disallow it.
@@ -653,9 +641,9 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                             Settings.backgroundPlayback = on
                             NotificationCenter.default.post(name: .mediaSettingsChanged, object: nil)
                         }),
-                .action("Media"),
-            ], footer: "Background audio keeps a page's sound going when you "
-                     + "leave the app or lock the screen, video included."),
+                .action("Video"),
+            ], footer: "Background audio keeps sound going when you leave the "
+                     + "app or lock the screen."),
             SettingsSection(title: "About", rows: [
                 [.version],
                 // Only shown once there is somewhere for them to go — see
@@ -817,7 +805,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 cell.selectionStyle = .none
 
             case .startPagePicker:
-                cfg.text = "Start Page"
+                cfg.text = "Opening Screen"
 
                 let currentStart = Settings.startPage
                 let startButton = UIButton(type: .system)
@@ -867,6 +855,19 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 toggle.isOn = get()
                 toggle.addAction(UIAction { _ in set(toggle.isOn) }, for: .valueChanged)
                 cell.accessoryView = toggle
+                cell.selectionStyle = .none
+
+            case .slider(let title, let get, let set):
+                cfg.text = title
+                // Sized here rather than by constraints: an accessory view is
+                // positioned by the cell from its frame, and a slider with no
+                // intrinsic width would collapse.
+                let slider = UISlider(frame: CGRect(x: 0, y: 0, width: 148, height: 28))
+                slider.minimumValue = 0
+                slider.maximumValue = 1
+                slider.value = get()
+                slider.addAction(UIAction { _ in set(slider.value) }, for: .valueChanged)
+                cell.accessoryView = slider
                 cell.selectionStyle = .none
 
             case .action(let title):
@@ -1005,7 +1006,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 default:                break
                 }
             case .searchEnginePicker, .startPagePicker, .blockingLevelPicker,
-                 .toggle, .version:
+                 .toggle, .slider, .version:
                 break
             }
         }

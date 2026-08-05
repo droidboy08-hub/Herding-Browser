@@ -11,7 +11,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		A1000001000000000000200 /* MinimalBrowser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MinimalBrowser.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1000001000000000000200 /* Herding.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Herding.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1000001000000000000201 /* AdblockFFI.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = AdblockFFI.xcframework; path = Frameworks/AdblockFFI.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -21,12 +21,12 @@
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = A1000001000000000000050 /* MinimalBrowser */;
+			target = A1000001000000000000050 /* Herding */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A1000001000000000000001 /* MinimalBrowser */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (2D1FFBC43019939E00A2924D /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = MinimalBrowser; sourceTree = "<group>"; };
+		A1000001000000000000001 /* Herding */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (2D1FFBC43019939E00A2924D /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Herding; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -44,7 +44,7 @@
 		A1000001000000000000020 = {
 			isa = PBXGroup;
 			children = (
-				A1000001000000000000001 /* MinimalBrowser */,
+				A1000001000000000000001 /* Herding */,
 				A1000001000000000000203 /* Frameworks */,
 				A1000001000000000000030 /* Products */,
 			);
@@ -53,7 +53,7 @@
 		A1000001000000000000030 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A1000001000000000000200 /* MinimalBrowser.app */,
+				A1000001000000000000200 /* Herding.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -69,9 +69,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A1000001000000000000050 /* MinimalBrowser */ = {
+		A1000001000000000000050 /* Herding */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A1000001000000000000060 /* Build configuration list for PBXNativeTarget "MinimalBrowser" */;
+			buildConfigurationList = A1000001000000000000060 /* Build configuration list for PBXNativeTarget "Herding" */;
 			buildPhases = (
 				A1000001000000000000070 /* Sources */,
 				A1000001000000000000010 /* Frameworks */,
@@ -82,11 +82,11 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				A1000001000000000000001 /* MinimalBrowser */,
+				A1000001000000000000001 /* Herding */,
 			);
-			name = MinimalBrowser;
-			productName = MinimalBrowser;
-			productReference = A1000001000000000000200 /* MinimalBrowser.app */;
+			name = Herding;
+			productName = Herding;
+			productReference = A1000001000000000000200 /* Herding.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -104,7 +104,7 @@
 					};
 				};
 			};
-			buildConfigurationList = A1000001000000000000100 /* Build configuration list for PBXProject "MinimalBrowser" */;
+			buildConfigurationList = A1000001000000000000100 /* Build configuration list for PBXProject "Herding" */;
 			compatibilityVersion = "Xcode 15.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -118,7 +118,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A1000001000000000000050 /* MinimalBrowser */,
+				A1000001000000000000050 /* Herding */,
 			);
 		};
 /* End PBXProject section */
@@ -272,7 +272,8 @@
 					"$(PROJECT_DIR)/Frameworks",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = MinimalBrowser/Info.plist;
+				INFOPLIST_FILE = Herding/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Herding;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -287,7 +288,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1;
-				PRODUCT_BUNDLE_IDENTIFIER = browsermini.browser;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.droidboy08.herding;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -310,7 +311,8 @@
 					"$(PROJECT_DIR)/Frameworks",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = MinimalBrowser/Info.plist;
+				INFOPLIST_FILE = Herding/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Herding;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -325,7 +327,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1;
-				PRODUCT_BUNDLE_IDENTIFIER = browsermini.browser;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.droidboy08.herding;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -336,7 +338,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A1000001000000000000060 /* Build configuration list for PBXNativeTarget "MinimalBrowser" */ = {
+		A1000001000000000000060 /* Build configuration list for PBXNativeTarget "Herding" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A1000001000000000000130 /* Debug */,
@@ -345,7 +347,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A1000001000000000000100 /* Build configuration list for PBXProject "MinimalBrowser" */ = {
+		A1000001000000000000100 /* Build configuration list for PBXProject "Herding" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A1000001000000000000110 /* Debug */,

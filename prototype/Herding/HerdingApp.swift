@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct MinimalBrowserApp: App {
+struct HerdingApp: App {
     /// One profile owns all storage for the session. Swapping this for
     /// `BrowserProfile(isPrivate: true)` gives a fully private browser — in-memory
     /// database, no session file, non-persistent website data — with no other

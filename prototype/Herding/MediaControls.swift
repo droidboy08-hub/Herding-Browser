@@ -5,7 +5,7 @@ import WebKit
 extension Notification.Name {
     /// A media setting changed. `BrowserViewController` reinstalls the injected
     /// scripts and re-evaluates the transport controls when this fires.
-    static let mediaSettingsChanged = Notification.Name("MinimalBrowser.mediaSettingsChanged")
+    static let mediaSettingsChanged = Notification.Name("Herding.mediaSettingsChanged")
 }
 
 /// What the page's media elements are doing, as reported by the injected media
