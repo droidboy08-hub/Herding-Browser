@@ -28,17 +28,17 @@ enum SupportInfo {
 
     /// Where someone goes for help. Required by App Store Connect.
     /// e.g. "https://example.com/support"
-    static let supportURL = ""
+    static let supportURL = "https://droidboy08-hub.github.io/herding-site/support.html"
 
     /// Where feedback and bug reports go. An address is fine — the app opens a
     /// pre-addressed mail with the version filled in.
     /// e.g. "help@example.com"
-    static let contactEmail = ""
+    static let contactEmail = "herdingbrowser@gmail.com"
 
     /// The privacy policy, hosted. The app also carries the policy offline, but
     /// App Store Connect wants a URL and will not accept the in-app copy.
     /// e.g. "https://example.com/privacy"
-    static let privacyPolicyURL = ""
+    static let privacyPolicyURL = "https://droidboy08-hub.github.io/herding-site/privacy.html"
 
     static var hasSupportURL: Bool { !supportURL.isEmpty }
     static var hasContact: Bool { !contactEmail.isEmpty }
