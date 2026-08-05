@@ -129,6 +129,7 @@
           ],
           "image-name" : "Herding2.png",
           "name" : "Herding2",
+          "opacity" : 1,
           "position" : {
             "scale" : 1,
             "translation-in-points" : [
