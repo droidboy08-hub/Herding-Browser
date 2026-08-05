@@ -1,0 +1,33 @@
+! Title: App Extras
+! Description: Rules written for this browser, for gaps the community lists
+!   leave. Kept small on purpose — anything that belongs upstream should go
+!   upstream instead of living here.
+!
+! ---------------------------------------------------------------------------
+! Mobile video site: ad payload rewriting
+!
+! The community rules for this site target the www host only. A phone browser
+! is served the m. host, so on mobile none of them apply and the ads play — the
+! single biggest gap in this app's blocking, and invisible from a desktop test.
+!
+! These mirror the www rules onto m. The ads are described inside the player's
+! own response, so nothing blocks them at the network layer: the key naming
+! them is renamed before the player reads it, and the player then schedules
+! nothing.
+m.youtube.com##+js(trusted-replace-fetch-response, '"adPlacements"', '"no_ads"', player?)
+m.youtube.com##+js(trusted-replace-fetch-response, '"adSlots"', '"no_ads"', player?)
+m.youtube.com##+js(trusted-replace-fetch-response, '"playerAds"', '"no_ads"', player?)
+m.youtube.com##+js(trusted-replace-xhr-response, '"adPlacements"', '"no_ads"', /\/player(?:\?.+)?$|watch\?[tv]=/)
+m.youtube.com##+js(trusted-replace-xhr-response, '"adSlots"', '"no_ads"', /\/player(?:\?.+)?$|watch\?[tv]=/)
+m.youtube.com##+js(trusted-replace-xhr-response, '"playerAds"', '"no_ads"', /\/player(?:\?.+)?$|watch\?[tv]=/)
+! The first payload arrives inline in the document rather than over the network,
+! so it needs the property pinned rather than the response rewritten.
+m.youtube.com##+js(set, ytInitialPlayerResponse.adPlacements, undefined)
+m.youtube.com##+js(set, ytInitialPlayerResponse.adSlots, undefined)
+m.youtube.com##+js(set, ytInitialPlayerResponse.playerAds, undefined)
+m.youtube.com##+js(json-prune, adPlacements adSlots playerAds)
+! Promoted rows in the mobile feed, which are markup rather than payload.
+m.youtube.com##ytm-promoted-video-renderer
+m.youtube.com##ytm-promoted-sparkles-web-renderer
+m.youtube.com##ytm-compact-promoted-video-renderer
+m.youtube.com##ytm-companion-slot-renderer

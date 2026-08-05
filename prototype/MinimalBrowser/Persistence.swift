@@ -1,88 +1,43 @@
-import Foundation
+import UIKit
 
-/// Codable snapshot of a tab. The favicon isn't persisted — it re-fetches when
-/// the tab loads.
-private struct TabRecord: Codable {
-    let id: UUID
-    let title: String
-    let url: URL
-}
+/// Page snapshots for the tab grid, cached on disk as JPEGs keyed by tab id.
+/// Lives in Caches (regenerable — the system may evict it under pressure).
+enum SnapshotStore {
+    private static let dir: URL = {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let d = base.appendingPathComponent("snapshots", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }()
 
-/// Saves/restores the open tabs + current tab across launches (UserDefaults).
-enum SessionStore {
-    private static let tabsKey = "session.tabs.v1"
-    private static let currentKey = "session.currentTab.v1"
+    private static func url(for id: UUID) -> URL {
+        dir.appendingPathComponent("\(id.uuidString).jpg")
+    }
 
-    static func save(tabs: [Tab], current: UUID?) {
-        let records = tabs.map { TabRecord(id: $0.id, title: $0.title, url: $0.url) }
-        if let data = try? JSONEncoder().encode(records) {
-            UserDefaults.standard.set(data, forKey: tabsKey)
+    static func save(_ image: UIImage, for id: UUID) {
+        guard let data = image.jpegData(compressionQuality: 0.7) else { return }
+        DispatchQueue.global(qos: .utility).async {
+            try? data.write(to: url(for: id), options: .atomic)
         }
-        UserDefaults.standard.set(current?.uuidString, forKey: currentKey)
     }
 
-    static func load() -> (tabs: [Tab], current: UUID?) {
-        guard let data = UserDefaults.standard.data(forKey: tabsKey),
-              let records = try? JSONDecoder().decode([TabRecord].self, from: data) else {
-            return ([], nil)
-        }
-        let tabs = records.map { Tab(id: $0.id, title: $0.title, url: $0.url) }
-        let current = UserDefaults.standard.string(forKey: currentKey).flatMap(UUID.init)
-        return (tabs, current)
-    }
-}
-
-/// One visited page.
-struct HistoryEntry: Codable, Identifiable {
-    var id: URL { url }
-    let url: URL
-    let title: String
-    let date: Date
-}
-
-/// Persistent visit history (newest first), stored as JSON in Application Support.
-final class HistoryStore {
-    static let shared = HistoryStore()
-
-    private(set) var entries: [HistoryEntry] = []
-    private let cap = 1000
-    private let fileURL: URL
-
-    private init() {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory,
-                                           in: .userDomainMask)[0]
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        fileURL = dir.appendingPathComponent("history.json")
-        load()
+    static func load(for id: UUID) -> UIImage? {
+        guard let data = try? Data(contentsOf: url(for: id)) else { return nil }
+        return UIImage(data: data)
     }
 
-    func record(url: URL, title: String) {
-        guard url.scheme?.hasPrefix("http") == true else { return }
-        entries.removeAll { $0.url == url }               // keep one entry per URL, most-recent
-        entries.insert(HistoryEntry(url: url, title: title, date: Date()), at: 0)
-        if entries.count > cap { entries.removeLast(entries.count - cap) }
-        save()
+    static func delete(for id: UUID) {
+        try? FileManager.default.removeItem(at: url(for: id))
     }
 
-    func remove(_ entry: HistoryEntry) {
-        entries.removeAll { $0.url == entry.url }
-        save()
-    }
-
-    func clear() {
-        entries = []
-        save()
-    }
-
-    private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([HistoryEntry].self, from: data) else { return }
-        entries = decoded
-    }
-
-    private func save() {
-        if let data = try? JSONEncoder().encode(entries) {
-            try? data.write(to: fileURL, options: .atomic)
+    /// Drop snapshots whose tabs no longer exist.
+    static func prune(keeping ids: Set<UUID>) {
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return }
+        for file in files {
+            let name = (file as NSString).deletingPathExtension
+            if let id = UUID(uuidString: name), !ids.contains(id) {
+                try? FileManager.default.removeItem(at: dir.appendingPathComponent(file))
+            }
         }
     }
 }

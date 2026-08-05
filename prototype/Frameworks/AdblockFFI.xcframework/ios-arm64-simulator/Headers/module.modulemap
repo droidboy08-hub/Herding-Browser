@@ -1,0 +1,4 @@
+module AdblockFFI {
+    header "adblock_ffi.h"
+    export *
+}
