@@ -6,9 +6,9 @@ prototype/build-release/
 **/*.xcuserstate
 **/xcuserdata/
 
-# Reference checkout of Brave iOS, consulted for how their adblock layers are
-# wired. 1.3 GB, has its own .git, and is not part of this app.
-vendor/brave-ios/
+# Reference checkouts of other browsers, read while working out how they wire
+# things. None of it ships in Herding, and it is re-cloneable.
+vendor/
 
 # Rust build artifacts (regenerable — ~460 MB)
 adblock-ffi/target/
