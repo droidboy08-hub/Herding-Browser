@@ -415,6 +415,15 @@ final class HomeOverlayView: UIView {
         panelHeight.constant = Self.tallPanelHeight
         field.text = ""
 
+        // Pinned open, the panel comes up with the box instead of waiting for a
+        // button. `panel.mode` is whatever it was last showing, so the box comes
+        // back the way it was left rather than always on tabs.
+        if Settings.startBoxShowsPanel {
+            panel.show(panel.mode)
+            panel.alpha = 1
+            panel.isHidden = false
+        }
+
         let reveal = {
             self.card.transform = .identity
             self.card.alpha = 1

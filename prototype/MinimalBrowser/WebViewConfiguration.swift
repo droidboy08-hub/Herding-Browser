@@ -414,20 +414,46 @@ enum WebViewFactory {
         return false;
       }
 
-      function report(value) {
-        try { bridge.postMessage({ scrollable: value }); } catch (e) {}
+      // Did the touch land on a video player?
+      //
+      // Tested by rectangle rather than by walking up from the target, because
+      // on a real player the target usually isn't the <video> at all — it's a
+      // controls overlay stacked on top of it. Asking whether the point falls
+      // inside a video's box catches the player and everything drawn over it.
+      //
+      // Videos too small to be watched are skipped: an autoplaying 1x1 or a
+      // muted thumbnail preview is not something anyone is trying to touch, and
+      // counting it would disable the gesture on pages that merely contain one.
+      function onVideo(x, y) {
+        var videos = document.querySelectorAll('video');
+        for (var i = 0; i < videos.length; i++) {
+          var box = videos[i].getBoundingClientRect();
+          if (box.width < 80 || box.height < 60) { continue; }
+          if (x >= box.left && x <= box.right && y >= box.top && y <= box.bottom) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function report(scrollable, media) {
+        try {
+          bridge.postMessage({ scrollable: scrollable, media: media });
+        } catch (e) {}
       }
 
       document.addEventListener('touchstart', function(event) {
-        var touch = event.target;
-        report(!!touch && scrollableAncestor(touch));
+        var target = event.target;
+        var point = event.touches && event.touches[0];
+        report(!!target && scrollableAncestor(target),
+               !!point && onVideo(point.clientX, point.clientY));
       }, { capture: true, passive: true });
 
       // Cleared on release, so a stale "yes" from the last touch can't block
       // the next gesture.
-      document.addEventListener('touchend', function() { report(false); },
+      document.addEventListener('touchend', function() { report(false, false); },
                                 { capture: true, passive: true });
-      document.addEventListener('touchcancel', function() { report(false); },
+      document.addEventListener('touchcancel', function() { report(false, false); },
                                 { capture: true, passive: true });
     })();
     """

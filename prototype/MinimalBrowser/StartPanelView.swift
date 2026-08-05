@@ -625,11 +625,17 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 .toggle("Favourite sites",
                         get: { Settings.showFavourites },
                         set: { Settings.showFavourites = $0 }),
+                .toggle("Always show second box",
+                        get: { Settings.startBoxShowsPanel },
+                        set: { Settings.startBoxShowsPanel = $0 }),
             ], footer: "Buttons: which \(Settings.startBoxButtonCapacity) sit "
                      + "along the top of the box.\n\n"
                      + "Favourite sites keeps up to \(FavouritesStore.capacity) "
                      + "sites under the search field. Tap + to add the page "
-                     + "you're on; hold one to remove it."),
+                     + "you're on; hold one to remove it.\n\n"
+                     + "Always show second box opens the panel with the start "
+                     + "box, on whichever of tabs, history or downloads it was "
+                     + "left. Off, it waits for one of the buttons."),
             SettingsSection(title: "Appearance", rows: [
                 .toggle("Dark mode",
                         get: { Settings.darkMode },

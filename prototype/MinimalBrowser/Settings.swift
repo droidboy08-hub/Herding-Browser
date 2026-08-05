@@ -80,6 +80,16 @@ enum Settings {
         }
     }
 
+    /// Open the second box together with the start box, rather than waiting for
+    /// one of the row's buttons to be tapped.
+    ///
+    /// It opens on whichever panel was last shown, so the box comes back the way
+    /// it was left.
+    static var startBoxShowsPanel: Bool {
+        get { bool("settings.startBoxShowsPanel", default: false) }
+        set { d.set(newValue, forKey: "settings.startBoxShowsPanel") }
+    }
+
     /// How many buttons fit across the top of the start box.
     ///
     /// Not a preference — a measurement. The row shares its line with the

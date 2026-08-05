@@ -103,10 +103,24 @@ final class BrowserViewController: UIViewController {
     /// The two things a downward drag can do, only one of them live at a time.
     /// Held so the setting can switch between them without rebuilding the page.
     private var revealSwipe: UISwipeGestureRecognizer?
+    /// How far below the safe area a downward swipe may start and still open the
+    /// start box. Generous on purpose: there is no chrome marking the band, so a
+    /// thin strip would be something to miss rather than something to aim at.
+    private static let revealBandHeight: CGFloat = 200
     /// Whether the touch now on screen landed inside something the page scrolls
     /// itself. Reported by an injected `touchstart` handler — see
     /// `gestureRecognizerShouldBegin`, which is the only reader.
     private var touchIsOnScrollableElement = false
+    /// Whether the touch that started landed inside a video player, reported by
+    /// the same `touchstart` handler. A player is the one thing on a page that
+    /// reliably wants downward drags of its own — scrubbing, minimising, the
+    /// site's own dismiss gesture — and it is where this gesture was most in the
+    /// way.
+    private var touchIsOnMedia = false
+    /// The page we have already tried to bring back from blank. A page that
+    /// paints nothing twice is a page that is genuinely empty, and reloading it
+    /// again would be a loop.
+    private var blankRecoveryURL: URL?
     private var pullToRefresh: UIRefreshControl?
     /// Held rather than made on the spot: a generator has to warm the Taptic
     /// Engine before it can fire promptly, and one created at the moment of the
@@ -450,8 +464,7 @@ final class BrowserViewController: UIViewController {
             return
         }
         webView.evaluateJavaScript(
-            "(document.body ? document.body.innerText.trim().length : 0)" +
-            " + (document.images ? document.images.length : 0)"
+            Self.paintedContentProbe
         ) { [weak self] result, _ in
             guard let self,
                   self.restoreGeneration == generation,
@@ -1579,11 +1592,17 @@ final class BrowserViewController: UIViewController {
             var l=document.querySelector("link[rel='"+rels[i]+"']")||document.querySelector("link[rel~='"+rels[i]+"']");
             if(l&&l.href) return l.href;
           }
+          // `location.origin` is the *string* "null" on an opaque origin — our
+          // own error page, about:blank, a data: URL — and concatenating it
+          // asks the network for "null/favicon.ico".
+          if(location.protocol!=="http:"&&location.protocol!=="https:") return "";
           return location.origin+"/favicon.ico";
         })()
         """
         webView.evaluateJavaScript(js) { [weak self] result, _ in
-            guard let self, let str = result as? String, let iconURL = URL(string: str) else { return }
+            guard let self, let str = result as? String, !str.isEmpty,
+                  let iconURL = URL(string: str), iconURL.scheme?.hasPrefix("http") == true
+            else { return }
             Self.faviconSession.dataTask(with: iconURL) { [weak self] data, _, _ in
                 guard let self, let data, let image = UIImage(data: data) else { return }  // .ico may not decode
                 DispatchQueue.main.async {
@@ -1840,8 +1859,7 @@ extension BrowserViewController: WKNavigationDelegate {
 
         let failedURL = webView.url
         webView.evaluateJavaScript(
-            "(document.body ? document.body.innerText.trim().length : 0)" +
-            " + (document.images ? document.images.length : 0)"
+            Self.paintedContentProbe
         ) { [weak self] result, _ in
             guard let self,
                   let visible = result as? Int, visible == 0,
@@ -1851,6 +1869,53 @@ extension BrowserViewController: WKNavigationDelegate {
                 .capitalizingFirstLetter()
             print("[Nav] \(status) with an empty body — showing an error page")
             self.showErrorPage(message: "\(reason) (\(status))", url: failedURL)
+        }
+    }
+
+    /// Asks the page whether it rendered anything at all.
+    ///
+    /// Text and images alone were too narrow: a player, a map or a chart draws
+    /// into a canvas, video or SVG and has neither, and calling those blank
+    /// would reload a page that was working.
+    private static let paintedContentProbe =
+        "(document.body ? document.body.innerText.trim().length : 0)" +
+        " + (document.images ? document.images.length : 0)" +
+        " + document.querySelectorAll('canvas,video,svg,iframe,input,button').length"
+
+    /// Bring back a page that finished loading and painted nothing.
+    ///
+    /// Going back — usually by the edge-swipe gesture — can land on a
+    /// back/forward entry WebKit can no longer reproduce: the page was dropped
+    /// from its cache and what it holds isn't enough to rebuild. The navigation
+    /// does not fail. It commits, `didFinish` runs, no delegate reports an
+    /// error, and the result is a correctly loaded empty document. Nothing in
+    /// the failure paths can see it, which is why it survived them all.
+    ///
+    /// Same answer Brave gives a tab whose web view has nothing to show —
+    /// `reloadFromOrigin`, and from origin because whatever is cached is
+    /// precisely what came back empty.
+    ///
+    /// Guarded per URL: a page that paints nothing twice is genuinely empty, and
+    /// reloading it again would be a loop.
+    private func recoverIfPagePaintedNothing() {
+        guard let url = webView.url, url.isWebPage, url != blankRecoveryURL else { return }
+
+        // Long enough for a first paint. Probing at `didFinish` reports empty on
+        // pages that are merely still laying out.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, !webView.isLoading, webView.url == url else { return }
+            webView.evaluateJavaScript(Self.paintedContentProbe) { [weak self] result, _ in
+                guard let self, let painted = result as? Int else { return }
+                guard painted == 0 else {
+                    // It came back fine, so the next blank on this URL is new.
+                    if self.blankRecoveryURL == url { self.blankRecoveryURL = nil }
+                    return
+                }
+                guard !self.webView.isLoading, self.webView.url == url else { return }
+                print("[Nav] page finished but painted nothing — reloading \(url)")
+                self.blankRecoveryURL = url
+                self.webView.reloadFromOrigin()
+            }
         }
     }
 
@@ -1883,6 +1948,7 @@ extension BrowserViewController: WKNavigationDelegate {
         contentProcessCrashes = 0   // a clean load means we've recovered
         pendingNavigationURL = nil  // backstop: a commit we somehow missed
         checkForEmptyErrorPage()
+        recoverIfPagePaintedNothing()
         // Keep the current tab's title/URL fresh for the list.
         guard let tab = tabManager.selectedTab else { return }
         let pageTitle = webView.title ?? ""
@@ -2160,6 +2226,7 @@ extension BrowserViewController: WKScriptMessageHandler {
 
         if message.name == WebViewFactory.scrollContextHandler {
             touchIsOnScrollableElement = body["scrollable"] as? Bool ?? false
+            touchIsOnMedia = body["media"] as? Bool ?? false
             return
         }
 
@@ -2296,6 +2363,29 @@ extension BrowserViewController: UIGestureRecognizerDelegate {
         // `touchstart` handler that walks up from whatever was touched looking
         // for a scrollable ancestor that isn't already at its top.
         guard !touchIsOnScrollableElement else { return false }
+
+        // Not on a video player. A player wants downward drags for its own
+        // ends — scrubbing, minimising, the site's own dismiss — and taking
+        // them to open the start box is what made watching anything annoying.
+        // Hit-tested by rectangle on the page side, so the controls drawn over
+        // a player count as the player.
+        guard !touchIsOnMedia else { return false }
+
+        // Started near the top of the page.
+        //
+        // Everything above is about what the touch landed on; this is about
+        // where. Restricting the reveal to a band means a downward drag lower
+        // down belongs to the page no matter what it is — a carousel, a map, a
+        // canvas, something with no scroll view and no way to announce itself.
+        //
+        // The band deliberately starts below the safe area rather than at the
+        // screen edge. iOS owns the top edge for Notification Centre and
+        // Control Center, and a gesture starting there is either eaten or has
+        // to be taken away from the user, which is not a trade a browser should
+        // make.
+        let start = gestureRecognizer.location(in: view).y
+        let top = view.safeAreaInsets.top
+        guard start >= top, start <= top + Self.revealBandHeight else { return false }
 
         return true
     }
