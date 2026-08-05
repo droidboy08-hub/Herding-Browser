@@ -79,6 +79,46 @@ final class StartPanelView: UIView {
     private lazy var collection = UICollectionView(frame: .zero,
                                                    collectionViewLayout: makeLayout(grid: isGrid))
 
+    /// Shown when the tab list is empty. A `backgroundView` rather than a view
+    /// laid over the collection: the list is transparent, so anything on top of
+    /// it reads through the rows once tabs exist.
+    private lazy var emptyTabsView: UIView = {
+        let container = UIView()
+
+        let title = UILabel()
+        title.translatesAutoresizingMaskIntoConstraints = false
+        title.text = "No open tabs"
+        title.font = Self.rounded(17, .semibold)
+        title.textColor = .secondaryLabel
+        title.textAlignment = .center
+
+        let hint = UILabel()
+        hint.translatesAutoresizingMaskIntoConstraints = false
+        // Points at the box directly above rather than naming it, which keeps
+        // the sentence true whatever that box ends up being called.
+        hint.text = "Search above to open one."
+        hint.font = .systemFont(ofSize: 14)
+        hint.textColor = .tertiaryLabel
+        hint.textAlignment = .center
+        hint.numberOfLines = 0
+
+        container.addSubview(title)
+        container.addSubview(hint)
+        NSLayoutConstraint.activate([
+            title.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            // Above centre, so it sits in the space the eye lands on rather than
+            // halfway down a tall empty card.
+            title.topAnchor.constraint(equalTo: container.topAnchor, constant: 64),
+            hint.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 6),
+            hint.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            hint.leadingAnchor.constraint(greaterThanOrEqualTo: container.leadingAnchor,
+                                          constant: 24),
+            hint.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor,
+                                           constant: -24),
+        ])
+        return container
+    }()
+
     private var entries: [HistoryEntry] = []
     private var bookmarks: [Bookmark] = []
     private var downloads: [DownloadItem] = []
@@ -225,6 +265,7 @@ final class StartPanelView: UIView {
 
         collection.translatesAutoresizingMaskIntoConstraints = false
         collection.backgroundColor = .clear
+        collection.backgroundView = emptyTabsView
         collection.showsVerticalScrollIndicator = false
         collection.dataSource = self
         collection.delegate = self
@@ -281,6 +322,7 @@ final class StartPanelView: UIView {
         self.currentTabID = current
         guard mode == .tabs else { return }
         collection.reloadData()
+        emptyTabsView.isHidden = !tabs.isEmpty
     }
 
     /// Filled mask while private, outline while not — the state has to be
@@ -337,6 +379,7 @@ final class StartPanelView: UIView {
         // as Tabs — and the subscript traps. Reloading the one going out of
         // sight is what keeps its cached counts honest.
         collection.reloadData()
+        emptyTabsView.isHidden = !tabs.isEmpty
         table.reloadData()
         if showingTabs {
             collection.setContentOffset(.zero, animated: false)
@@ -652,7 +695,10 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                                           .action("Report a Site Problem")] : [],
                 [.action("Privacy Policy"), .action("Terms of Use"), .action("Licences")],
             ].flatMap { $0 },
-                            footer: "Made with open-source software. No account, no analytics."),
+                            footer: SupportInfo.developerName.isEmpty
+                                ? "Made with open-source software. No account, no analytics."
+                                : "By \(SupportInfo.developerName). Made with open-source "
+                                + "software. No account, no analytics."),
         ]
     }
 
