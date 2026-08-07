@@ -24,7 +24,7 @@ enum SupportInfo {
 
     /// Shown as the developer, in About and in the legal documents.
     /// e.g. "Jane Smith" or "Acme Software Ltd".
-    static let developerName = ""
+    static let developerName = "Baljinder Singh"
 
     /// Where someone goes for help. Required by App Store Connect.
     /// e.g. "https://example.com/support"
