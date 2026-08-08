@@ -380,7 +380,12 @@ final class BrowserViewController: UIViewController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self, self.needsReloadOnForeground else { return }
+            guard let self else { return }
+            // Before the reload check, and outside it: the suspension has to be
+            // lifted on every return to the foreground, not only on the returns
+            // that happen to need a reload.
+            self.resumePlaybackAfterForegrounding()
+            guard self.needsReloadOnForeground else { return }
             self.needsReloadOnForeground = false
             // Deferred recovery isn't a crash-loop symptom, so it doesn't count
             // against the retry budget — reset it and reload once.

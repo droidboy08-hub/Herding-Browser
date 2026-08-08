@@ -246,12 +246,32 @@ extension BrowserViewController {
     /// the Now Playing controls and the visibility script, neither of which is
     /// what keeps sound alive.
     ///
-    /// So the off state has to be enforced rather than merely not enabled:
-    /// pause the element, then release the session.
+    /// Pausing the element is not enough on its own either: a pause is a state a
+    /// page can leave, and the transport controls are still on screen in Control
+    /// Center, so pressing play there started it up again. WebKit publishes Now
+    /// Playing for the page itself and services those presses inside the content
+    /// process, which is somewhere no handler of ours is consulted.
+    ///
+    /// `setAllMediaPlaybackSuspended` is the switch that actually holds. It
+    /// suspends the web view's media until it is unsuspended, so a press in
+    /// Control Center has nothing left to resume, and it is lifted again in
+    /// `resumePlaybackAfterForegrounding()`.
     func stopPlaybackIfBackgroundingDisallowed() {
         guard !Settings.backgroundPlayback else { return }
-        webViewForMediaControl?.evaluateJavaScript(RemoteMediaController.pauseScript)
         remoteMedia.endPlayback()
+        webViewForMediaControl?.pauseAllMediaPlayback { [weak self] in
+            self?.webViewForMediaControl?.setAllMediaPlaybackSuspended(true)
+        }
+    }
+
+    /// Lift the suspension put in place on the way out.
+    ///
+    /// Unconditional, and deliberately not guarded on the current setting: the
+    /// setting can be turned on while the app is in the background, and a web
+    /// view left suspended because of what the switch used to say would refuse
+    /// to play anything for the rest of the session.
+    func resumePlaybackAfterForegrounding() {
+        webViewForMediaControl?.setAllMediaPlaybackSuspended(false)
     }
 
     /// Called from the injected media script when a page's media starts, stops or
@@ -261,6 +281,16 @@ extension BrowserViewController {
 
         if stateName == "ended" {
             remoteMedia.endPlayback()
+            return
+        }
+
+        // Nothing is published while background playback is off. Now Playing is
+        // an offer of transport controls, and this app has just refused to
+        // service them — advertising a play button that resumes audio the
+        // setting says should have stopped is how the switch came to look
+        // broken.
+        guard Settings.backgroundPlayback else {
+            remoteMedia.clearNowPlaying()
             return
         }
 
