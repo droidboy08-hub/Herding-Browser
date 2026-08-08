@@ -236,6 +236,24 @@ extension BrowserViewController {
         remoteMedia.activate()
     }
 
+    /// Stop the page's media when the app is backgrounded and the setting is off.
+    ///
+    /// `UIBackgroundModes: audio` is declared unconditionally, because it has to
+    /// be there for the setting to be able to work at all — it cannot be turned
+    /// on at runtime. But declaring it grants the capability to the whole app,
+    /// and WebKit keeps its own audio session for page media, so audio carried
+    /// on playing in the background whatever the switch said. The switch gated
+    /// the Now Playing controls and the visibility script, neither of which is
+    /// what keeps sound alive.
+    ///
+    /// So the off state has to be enforced rather than merely not enabled:
+    /// pause the element, then release the session.
+    func stopPlaybackIfBackgroundingDisallowed() {
+        guard !Settings.backgroundPlayback else { return }
+        webViewForMediaControl?.evaluateJavaScript(RemoteMediaController.pauseScript)
+        remoteMedia.endPlayback()
+    }
+
     /// Called from the injected media script when a page's media starts, stops or
     /// ends.
     func handleMediaMessage(_ body: [String: Any]) {
