@@ -287,6 +287,39 @@ enum RequestParty {
     }
 }
 
+/// Recognises the "are you a human" checks that stand in front of a site.
+///
+/// These get an unconditional pass. A filter list can and does match parts of
+/// them — a captcha is third-party script running on someone else's domain,
+/// which is the shape of the thing lists are written to catch — but blocking one
+/// costs the whole site rather than an advertisement. The same test exists in
+/// the injected script, which is where most requests are decided; this is the
+/// backstop for the ones that reach the native side.
+///
+/// Host *and* path where the host is shared: reCAPTCHA is served from
+/// `www.google.com`, and exempting that host outright would exempt Google
+/// Search along with it.
+enum ChallengeSurface {
+
+    static func contains(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        let path = url.path
+
+        if host == "challenges.cloudflare.com" { return true }
+        if host == "hcaptcha.com" || host.hasSuffix(".hcaptcha.com") { return true }
+        // Cloudflare's managed challenge serves its scripts from the site's own
+        // origin, so here the host says nothing and the path says everything.
+        if path.hasPrefix("/cdn-cgi/challenge-platform/") { return true }
+        if path.hasPrefix("/recaptcha/") && recaptchaHosts.contains(host) { return true }
+        return false
+    }
+
+    private static let recaptchaHosts: Set<String> = [
+        "www.google.com", "google.com", "www.gstatic.com",
+        "recaptcha.net", "www.recaptcha.net",
+    ]
+}
+
 // MARK: - Script message handlers
 
 /// Answers the injected request-blocking script.
@@ -317,6 +350,13 @@ final class RequestBlockingHandler: NSObject, WKScriptMessageHandlerWithReply {
 
         let level = Settings.blockingLevel
         guard level != .off else {
+            replyHandler(false, nil)
+            return
+        }
+        // A bot check or a captcha is never blocked, whatever the lists say and
+        // whatever the level is. Blocking one doesn't hide an ad — it makes the
+        // site behind it unreachable.
+        guard !ChallengeSurface.contains(resourceURL) else {
             replyHandler(false, nil)
             return
         }

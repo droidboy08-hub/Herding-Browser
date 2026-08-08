@@ -160,6 +160,12 @@ enum WebViewFactory {
                                                   injectionTime: .atDocumentEnd,
                                                   forMainFrameOnly: true))
         }
+        // Before anything that wraps a built-in, and in the page's own world,
+        // because it is the page-visible wrappers it exists to disguise.
+        controller.addUserScript(WKUserScript(source: nativeFunctionMasking,
+                                              injectionTime: .atDocumentStart,
+                                              forMainFrameOnly: false,
+                                              in: .page))
         controller.addUserScript(WKUserScript(source: historyReporter,
                                               injectionTime: .atDocumentStart,
                                               forMainFrameOnly: true))
@@ -232,6 +238,84 @@ enum WebViewFactory {
     }
 
     // MARK: - Injected scripts
+
+    /// Makes the wrappers installed below indistinguishable from the built-ins
+    /// they replace, as far as `Function.prototype.toString` is concerned.
+    ///
+    /// This is what a failed Cloudflare "verify you are human" check actually
+    /// was. A challenge does not only measure the browser — it checks whether
+    /// anything has been *tampered with*, and the cheapest tamper test there is
+    /// is to stringify a built-in and look for `[native code]`. Wrapping `fetch`
+    /// or `getImageData` makes that test return the wrapper's own source, so the
+    /// challenge concludes it is looking at an automated browser and fails it.
+    /// Nothing about the wrappers' behaviour was ever the problem.
+    ///
+    /// So `toString` is taught to answer for the wrappers with the source of the
+    /// function each one replaced. The replacement is registered as answering
+    /// for *itself* too, or the disguise would be given away by the one function
+    /// that performs it. `name` and `length` are copied across for the same
+    /// reason: they are the other two properties a check like this reads.
+    ///
+    /// Runs before every other page-world script, and exposes `__mbMask` as a
+    /// non-enumerable property so those scripts can reach it without it turning
+    /// up in an enumeration of `window`.
+    private static let nativeFunctionMasking = """
+    (function() {
+      if (window.__mbMask) { return; }
+
+      var realToString = Function.prototype.toString;
+      var sources = new WeakMap();
+
+      function toString() {
+        var source = sources.get(this);
+        return source !== undefined ? source : realToString.call(this);
+      }
+      sources.set(toString, realToString.call(realToString));
+      Function.prototype.toString = toString;
+
+      function mask(wrapper, original) {
+        try {
+          sources.set(wrapper, realToString.call(original));
+          ['name', 'length'].forEach(function(key) {
+            var descriptor = Object.getOwnPropertyDescriptor(original, key);
+            if (descriptor) { Object.defineProperty(wrapper, key, descriptor); }
+          });
+        } catch (e) {}
+        return wrapper;
+      }
+
+      Object.defineProperty(window, '__mbMask', { value: mask });
+    })();
+    """
+
+    /// Shared test: is this document a bot-check challenge or a captcha?
+    ///
+    /// Those frames exist to measure the browser, and every wrapper this file
+    /// installs is something they are specifically looking for. There is nothing
+    /// to gain by filtering them either — a captcha carries no ads and tracks
+    /// nothing beyond the check it was put there to make — so the scripts that
+    /// touch the page leave them alone entirely.
+    ///
+    /// Matched on host *and* path where the host is shared with something else:
+    /// reCAPTCHA lives on `www.google.com`, and exempting all of Google Search
+    /// from fingerprinting defence to accommodate it would be a poor trade.
+    private static let challengeSurfaceTest = """
+    function onChallengeSurface() {
+      var host = location.hostname;
+      var path = location.pathname;
+      if (host === 'challenges.cloudflare.com') { return true; }
+      if (host === 'hcaptcha.com' || host.endsWith('.hcaptcha.com')) { return true; }
+      // Cloudflare's managed challenge serves its own scripts from the site's
+      // origin under this path, so the host says nothing and the path says all.
+      if (path.indexOf('/cdn-cgi/challenge-platform/') === 0) { return true; }
+      if (path.indexOf('/recaptcha/') === 0) {
+        if (host === 'www.google.com' || host === 'google.com' ||
+            host === 'www.gstatic.com' || host === 'recaptcha.net' ||
+            host === 'www.recaptcha.net') { return true; }
+      }
+      return false;
+    }
+    """
 
     /// Disable pinch-to-zoom site-wide by forcing a non-scalable viewport.
     /// Double-tap zoom and scrolling are untouched.
@@ -487,6 +571,10 @@ enum WebViewFactory {
       var bridge = handlers && handlers.\(requestBlockingHandler);
       if (!bridge) { return; }
 
+      \(challengeSurfaceTest)
+      if (onChallengeSurface()) { return; }
+
+      var mask = window.__mbMask || function(wrapper) { return wrapper; };
       var TOKEN = '\(securityToken)';
       var BLOCKS_FIRST_PARTY = \(Settings.blockingLevel.blocksFirstParty);
 
@@ -506,12 +594,30 @@ enum WebViewFactory {
       }
       var PAGE_DOMAIN = registrable(location.hostname);
 
+      // A challenge asking whether you are a human, wherever it is hosted. Never
+      // delayed and never blocked, at any level: a page you cannot get past is
+      // worse than any request it makes.
+      function isChallenge(location) {
+        var host = location.hostname;
+        if (host === 'challenges.cloudflare.com') { return true; }
+        if (host === 'hcaptcha.com' || host.endsWith('.hcaptcha.com')) { return true; }
+        if (location.pathname.indexOf('/cdn-cgi/challenge-platform/') === 0) { return true; }
+        if (location.pathname.indexOf('/recaptcha/') === 0) {
+          if (host === 'www.google.com' || host === 'google.com' ||
+              host === 'www.gstatic.com' || host === 'recaptcha.net' ||
+              host === 'www.recaptcha.net') { return true; }
+        }
+        return false;
+      }
+
       // A request this level would never block: don't ask, don't wrap it in a
       // promise, don't delay it by a single turn of the event loop.
       function skip(url) {
+        var parsed;
+        try { parsed = new URL(url); } catch (e) { return false; }
+        if (isChallenge(parsed)) { return true; }
         if (BLOCKS_FIRST_PARTY) { return false; }
-        try { return registrable(new URL(url).hostname) === PAGE_DOMAIN; }
-        catch (e) { return false; }
+        return registrable(parsed.hostname) === PAGE_DOMAIN;
       }
 
       function ask(url, kind) {
@@ -532,7 +638,7 @@ enum WebViewFactory {
 
       var realFetch = window.fetch;
       if (typeof realFetch === 'function') {
-        window.fetch = function() {
+        window.fetch = mask(function fetch() {
           var args = arguments, self = this;
           var resource = args[0];
           var raw = typeof resource === 'string' ? resource
@@ -550,19 +656,19 @@ enum WebViewFactory {
             }
             return realFetch.apply(self, args);
           });
-        };
+        }, realFetch);
       }
 
       var realOpen = XMLHttpRequest.prototype.open;
       var realSend = XMLHttpRequest.prototype.send;
 
-      XMLHttpRequest.prototype.open = function(method, url, async) {
+      XMLHttpRequest.prototype.open = mask(function open(method, url, async) {
         // A synchronous request can't wait on a promise, so it is left alone.
         this.__blockCheckURL = (async === undefined || async) ? absolute(url) : null;
         return realOpen.apply(this, arguments);
-      };
+      }, realOpen);
 
-      XMLHttpRequest.prototype.send = function() {
+      XMLHttpRequest.prototype.send = mask(function send() {
         var self = this, args = arguments;
         var url = self.__blockCheckURL;
         // Same short-circuit as `fetch`, and it matters more here: a media
@@ -579,7 +685,7 @@ enum WebViewFactory {
             self.dispatchEvent(new ProgressEvent('loadend'));
           } catch (e) {}
         });
-      };
+      }, realSend);
     })();
     """
     }
@@ -607,6 +713,9 @@ enum WebViewFactory {
       var handlers = window.webkit && window.webkit.messageHandlers;
       var bridge = handlers && handlers.\(cosmeticHandler);
       if (!bridge) { return; }
+
+      \(challengeSurfaceTest)
+      if (onChallengeSurface()) { return; }
 
       var TOKEN = '\(securityToken)';
       var sheet = null;
@@ -983,6 +1092,11 @@ enum WebViewFactory {
       if (window.__mbFarbled) { return; }
       window.__mbFarbled = true;
 
+      \(challengeSurfaceTest)
+      if (onChallengeSurface()) { return; }
+
+      var mask = window.__mbMask || function(wrapper) { return wrapper; };
+
       // Session key: constant for this launch, different next launch. Combined
       // with the origin so two sites can't compare notes on what they measured.
       var KEY = '\(securityToken)';
@@ -1036,11 +1150,11 @@ enum WebViewFactory {
 
       try {
         var realGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-        CanvasRenderingContext2D.prototype.getImageData = function() {
+        CanvasRenderingContext2D.prototype.getImageData = mask(function getImageData() {
           var result = realGetImageData.apply(this, arguments);
           try { perturb(result.data); } catch (e) {}
           return result;
-        };
+        }, realGetImageData);
       } catch (e) {}
 
       try {
@@ -1059,22 +1173,22 @@ enum WebViewFactory {
         }
 
         var realToDataURL = HTMLCanvasElement.prototype.toDataURL;
-        HTMLCanvasElement.prototype.toDataURL = function() {
+        HTMLCanvasElement.prototype.toDataURL = mask(function toDataURL() {
           try {
             return realToDataURL.apply(farbleCanvas(this), arguments);
           } catch (e) {
             return realToDataURL.apply(this, arguments);
           }
-        };
+        }, realToDataURL);
 
         var realToBlob = HTMLCanvasElement.prototype.toBlob;
-        HTMLCanvasElement.prototype.toBlob = function() {
+        HTMLCanvasElement.prototype.toBlob = mask(function toBlob() {
           try {
             return realToBlob.apply(farbleCanvas(this), arguments);
           } catch (e) {
             return realToBlob.apply(this, arguments);
           }
-        };
+        }, realToBlob);
       } catch (e) {}
 
       // MARK: WebGL
@@ -1084,11 +1198,11 @@ enum WebViewFactory {
         [window.WebGLRenderingContext, window.WebGL2RenderingContext].forEach(function(type) {
           if (!type) { return; }
           var realGetParameter = type.prototype.getParameter;
-          type.prototype.getParameter = function(parameter) {
+          type.prototype.getParameter = mask(function getParameter(parameter) {
             if (parameter === 37445) { return 'Apple Inc.'; }
             if (parameter === 37446) { return 'Apple GPU'; }
             return realGetParameter.apply(this, arguments);
-          };
+          }, realGetParameter);
         });
       } catch (e) {}
 
@@ -1097,7 +1211,7 @@ enum WebViewFactory {
       // noise is far below anything audible and far above hash stability.
       try {
         var realGetChannelData = AudioBuffer.prototype.getChannelData;
-        AudioBuffer.prototype.getChannelData = function() {
+        AudioBuffer.prototype.getChannelData = mask(function getChannelData() {
           var data = realGetChannelData.apply(this, arguments);
           try {
             var random = makeRandom(seed + 1);
@@ -1106,10 +1220,10 @@ enum WebViewFactory {
             }
           } catch (e) {}
           return data;
-        };
+        }, realGetChannelData);
 
         var realFrequency = AnalyserNode.prototype.getFloatFrequencyData;
-        AnalyserNode.prototype.getFloatFrequencyData = function(array) {
+        AnalyserNode.prototype.getFloatFrequencyData = mask(function getFloatFrequencyData(array) {
           realFrequency.apply(this, arguments);
           try {
             var random = makeRandom(seed + 2);
@@ -1117,21 +1231,29 @@ enum WebViewFactory {
               array[i] = array[i] + (random() - 0.5) * 1e-4;
             }
           } catch (e) {}
-        };
+        }, realFrequency);
       } catch (e) {}
 
-      // MARK: Device and locale
-      // Small integers that vary by model, and a plugin list that on iOS says
-      // nothing true anyway. Reported as the most common answer rather than a
-      // random one — blending in beats standing out.
+      // MARK: Device
+      // Core count varies by model and is one of the few integers a phone gives
+      // away for free. Four is what the commonest iPhones report, so this is
+      // blending in rather than standing out.
       define(navigator, 'hardwareConcurrency', 4);
-      define(navigator, 'deviceMemory', 8);
-      define(navigator, 'plugins', []);
-      define(navigator, 'mimeTypes', []);
-      define(navigator, 'languages', ['en-US', 'en']);
-      // WebKit's own battery/connection surfaces, where present, are pure signal.
-      define(navigator, 'connection', undefined);
-      define(navigator, 'getBattery', undefined);
+
+      // Nothing else is touched here, and the omissions are deliberate.
+      //
+      // `deviceMemory`, `connection` and `getBattery` do not exist in Safari on
+      // iOS at all. Defining them — even as `undefined` — leaves an own property
+      // where the real browser has none, so a script that asks
+      // `Object.getOwnPropertyDescriptor` finds a fingerprint that only this app
+      // has. The same went for `plugins` and `mimeTypes`: iOS already reports
+      // both as empty, and replacing them with plain arrays changed their class
+      // from `PluginArray` to `Array`, which is exactly the mismatch a bot check
+      // looks for. And forcing `languages` to `en-US` contradicted the real
+      // `navigator.language` for anyone whose phone is set to anything else.
+      //
+      // Each of those hid a detail worth roughly nothing and added a tell worth
+      // a great deal. Leaving them alone is the stronger defence.
     })();
     """
 }
