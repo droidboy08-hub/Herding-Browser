@@ -238,15 +238,38 @@ enum Settings {
     }
 
     // MARK: Appearance
-    /// Force the dark palette regardless of what the system is set to.
+    /// Which palette the app draws in.
     ///
-    /// Off means "follow the system", which is the right default — a browser
-    /// that ignores the phone's own switch is a browser that is wrong twice a
-    /// day. This exists for the people who want the dark one either way.
-    static var darkMode: Bool {
-        get { bool("settings.darkMode", default: false) }
+    /// Three states rather than two, and a picker rather than a switch. A
+    /// two-state "force dark" toggle could only ever read as off on a phone
+    /// already in dark mode, which looked like a switch that didn't work. Naming
+    /// all three choices says what each one does and leaves nothing to infer.
+    enum AppearanceMode: String, CaseIterable {
+        case system, light, dark
+
+        var name: String {
+            switch self {
+            case .system: return "System Default"
+            case .light:  return "Light"
+            case .dark:   return "Dark"
+            }
+        }
+    }
+
+    private static let appearanceModeKey = "settings.appearanceMode"
+
+    static var appearanceMode: AppearanceMode {
+        get {
+            if let raw = d.string(forKey: appearanceModeKey),
+               let mode = AppearanceMode(rawValue: raw) {
+                return mode
+            }
+            // The setting used to be a lone "force dark" bool, in which false
+            // meant follow the system. Anyone who had it on wanted dark.
+            return d.bool(forKey: "settings.darkMode") ? .dark : .system
+        }
         set {
-            d.set(newValue, forKey: "settings.darkMode")
+            d.set(newValue.rawValue, forKey: appearanceModeKey)
             NotificationCenter.default.post(name: .appearanceChanged, object: nil)
         }
     }

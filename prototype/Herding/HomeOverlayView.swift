@@ -151,6 +151,12 @@ final class HomeOverlayView: UIView {
         panelHeight.priority = .defaultHigh
         panelHeight.isActive = true
         panel.onClose = { [weak self] in self?.hidePanel() }
+        // Closing the list and opening the keyboard *is* the new tab: there is no
+        // blank page to show, so the tab starts where the address does.
+        panel.onNewTab = { [weak self] in
+            self?.hidePanel()
+            self?.field.becomeFirstResponder()
+        }
         stack.addArrangedSubview(panel)
 
         let content = card.contentView

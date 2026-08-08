@@ -1,6 +1,7 @@
 import UIKit
 import WebKit
 import AVFoundation
+import SafariServices
 
 /// Minimal, tab-less browser surface.
 /// - One WKWebView, no tabs, no toolbar buttons.
@@ -290,10 +291,17 @@ final class BrowserViewController: UIViewController {
     }
 
     private func applyAppearance() {
-        view.window?.overrideUserInterfaceStyle = Settings.darkMode ? .dark : .unspecified
+        // Set on the window, so it reaches the web view too and pages get the
+        // `prefers-color-scheme` the app is drawing in.
+        switch Settings.appearanceMode {
+        case .system: view.window?.overrideUserInterfaceStyle = .unspecified
+        case .light:  view.window?.overrideUserInterfaceStyle = .light
+        case .dark:   view.window?.overrideUserInterfaceStyle = .dark
+        }
         homeOverlay.reloadWallpaper()
         homeOverlay.reloadFavourites()
         homeOverlay.reloadStartBoxButtons()
+        homeOverlay.panel.settingsChanged()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -512,6 +520,7 @@ final class BrowserViewController: UIViewController {
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
+            self?.stopPlaybackIfBackgroundingDisallowed()
             self?.stashSessionState()
             self?.profile.shutdown()
         }
@@ -1249,7 +1258,17 @@ final class BrowserViewController: UIViewController {
             switch destination {
             case .help:
                 guard let url = URL(string: SupportInfo.supportURL) else { return }
-                openTab(url: url)
+                // A sheet rather than a tab.
+                //
+                // Opened as a tab, this page was the tab's only history entry,
+                // so the back swipe had nowhere to go and left a blank white
+                // page behind. It also put a page nobody chose to browse into
+                // the tab list, and left the reader to find their own way back.
+                // A Safari sheet has its own chrome, its own Done button, and no
+                // way to strand anybody.
+                let help = SFSafariViewController(url: url)
+                help.preferredControlTintColor = .tintColor
+                present(help, animated: true)
             case .feedback:
                 guard let url = SupportInfo.feedbackURL(subject: "Feedback") else { return }
                 UIApplication.shared.open(url)

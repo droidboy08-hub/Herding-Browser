@@ -48,6 +48,10 @@ final class StartPanelView: UIView {
     /// sets are a switch away from each other rather than a mode buried in
     /// settings — the same place other browsers put it.
     var onTogglePrivate: ((Bool) -> Void)?
+    /// Start a tab from the tab list itself. There is no blank page to put in a
+    /// new tab, so this closes the panel and hands the address field the
+    /// keyboard — a tab begins when an address does.
+    var onNewTab: (() -> Void)?
     var onClose: (() -> Void)?
 
     /// Which set of tabs is on screen. Set by the browser after the switch has
@@ -69,6 +73,7 @@ final class StartPanelView: UIView {
     private let titleLabel = UILabel()
     private let gridButton = UIButton(type: .system)
     private let privateButton = UIButton(type: .system)
+    private let newTabButton = UIButton(type: .system)
     private let retryButton = UIButton(type: .system)
     private let searchButton = UIButton(type: .system)
     private let clearHistoryButton = TrashIconView(size: 20, strokeWidth: 1.5)
@@ -95,8 +100,9 @@ final class StartPanelView: UIView {
         let hint = UILabel()
         hint.translatesAutoresizingMaskIntoConstraints = false
         // Points at the box directly above rather than naming it, which keeps
-        // the sentence true whatever that box ends up being called.
-        hint.text = "Search above to open one."
+        // the sentence true whatever that box ends up being called. The plus is
+        // in the header a few points up, and lands in the same place.
+        hint.text = "Search above, or tap + to open one."
         hint.font = .systemFont(ofSize: 14)
         hint.textColor = .tertiaryLabel
         hint.textAlignment = .center
@@ -170,6 +176,15 @@ final class StartPanelView: UIView {
         privateButton.addTarget(self, action: #selector(togglePrivate), for: .touchUpInside)
         updatePrivateButton()
 
+        // Leftmost of the tab controls, which is where a "new" action sits in
+        // every other browser's tab screen.
+        newTabButton.setImage(UIImage(systemName: "plus"), for: .normal)
+        newTabButton.tintColor = .secondaryLabel
+        newTabButton.accessibilityLabel = "New tab"
+        newTabButton.setPreferredSymbolConfiguration(
+            UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold), forImageIn: .normal)
+        newTabButton.addTarget(self, action: #selector(newTabTapped), for: .touchUpInside)
+
         // Downloads header controls: retry sits left of search, both left of close.
         retryButton.setImage(UIImage(systemName: "arrow.clockwise"), for: .normal)
         retryButton.addTarget(self, action: #selector(retryTapped), for: .touchUpInside)
@@ -193,7 +208,7 @@ final class StartPanelView: UIView {
             UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold), forImageIn: .normal)
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 
-        let buttons = UIStackView(arrangedSubviews: [privateButton, gridButton, clearHistoryButton, retryButton, searchButton, closeButton])
+        let buttons = UIStackView(arrangedSubviews: [newTabButton, privateButton, gridButton, clearHistoryButton, retryButton, searchButton, closeButton])
         buttons.axis = .horizontal
         buttons.spacing = 18
         buttons.translatesAutoresizingMaskIntoConstraints = false
@@ -339,6 +354,8 @@ final class StartPanelView: UIView {
         }
     }
 
+    @objc private func newTabTapped() { onNewTab?() }
+
     @objc private func togglePrivate() {
         // Reported, not applied: the browser owns the profile swap and sets
         // `isPrivateBrowsing` back once it has happened.
@@ -359,6 +376,7 @@ final class StartPanelView: UIView {
         let showingHistory = mode == .history
         gridButton.isHidden = !showingTabs
         privateButton.isHidden = !showingTabs
+        newTabButton.isHidden = !showingTabs
         clearHistoryButton.isHidden = !showingHistory
         retryButton.isHidden = !showingDownloads
         searchButton.isHidden = !showingDownloads
@@ -576,6 +594,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
         case searchEnginePicker
         case startPagePicker
         case blockingLevelPicker
+        case appearanceModePicker
         case toggle(String, get: () -> Bool, set: (Bool) -> Void)
         case slider(String, get: () -> Float, set: (Float) -> Void)
         case action(String)
@@ -643,7 +662,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 .toggle("HTTPS-Only Mode",
                         get: { Settings.httpsOnly },
                         set: { Settings.httpsOnly = $0 }),
-                .action("Content Blocking"),
+                .action("Content Filtering"),
                 .action("Passwords"),
                 // These two had handlers written for them and no row to reach
                 // them from — a browser that can't be told to forget anything
@@ -653,7 +672,10 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
             ], footer: Settings.blockingLevel.summary
                      + "\n\nBlocking JavaScript is the strongest setting here, "
                      + "and the most likely to break a site."),
-            SettingsSection(title: "Home", rows: [
+            // One section, because the split was arbitrary: how Home is laid out
+            // and what the app looks like are the same question asked twice, and
+            // two three-row groups made you scroll past one to reach the other.
+            SettingsSection(title: "Home & Appearance", rows: [
                 .action("Buttons"),
                 .toggle("Favourites",
                         get: { Settings.showFavourites },
@@ -664,16 +686,12 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 .slider("Swipe sensitivity",
                         get: { Settings.revealSwipeSensitivity },
                         set: { Settings.revealSwipeSensitivity = $0 }),
+                .appearanceModePicker,
+                .action("App Icon"),
+                .action("Wallpaper"),
             ], footer: "Favourites: tap + to keep the page you're on, hold to "
                      + "remove.\n\nSwipe sensitivity sets how far you drag "
                      + "down a page to open Home."),
-            SettingsSection(title: "Appearance", rows: [
-                .toggle("Dark mode",
-                        get: { Settings.darkMode },
-                        set: { Settings.darkMode = $0 }),
-                .action("App Icon"),
-                .action("Wallpaper"),
-            ], footer: "Dark mode off follows the system."),
             SettingsSection(title: "Media", rows: [
                 // One switch for both halves: claiming the audio session and
                 // telling the page it is still visible only work together, and
@@ -717,6 +735,86 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
         case .history, .downloads, .bookmarks, .tabs: return nil
         case .settings:                        return settingsSections[section].title
         }
+    }
+
+    /// A setting changed somewhere other than this list — repaint it.
+    ///
+    /// Only the App Icon row currently needs this: it draws the icon in use, and
+    /// the screen that changes the icon is presented over this one. The reload
+    /// happens behind that screen, so there is nothing to see flicker.
+    func settingsChanged() {
+        guard mode == .settings else { return }
+        table.reloadData()
+    }
+
+    /// Put the current blocking level on its control, and build the menu that
+    /// changes it. Called again, on the same button, once a level is chosen.
+    ///
+    /// Nothing is reloaded. Changing the level used to reload the whole section,
+    /// because the section's footer describes the chosen level — and UITableView
+    /// crossfades a `reloadSections` even when asked for `.none`, so every row in
+    /// Privacy blinked on each change. Editing the two things that actually
+    /// differ leaves the rest of the section alone, which is what it looks like
+    /// it should do.
+    private func applyBlockingLevel(to button: UIButton, section: Int) {
+        let current = Settings.blockingLevel
+        button.setTitle(current.name, for: .normal)
+        button.sizeToFit()
+        // The names are different widths, and the cell places its accessory on
+        // layout — without this the button keeps the previous level's box.
+        button.superview?.setNeedsLayout()
+
+        button.menu = UIMenu(title: "", children: BlockingLevel.allCases.map { level in
+            UIAction(title: level.name, state: level == current ? .on : .off) {
+                [weak self, weak button] _ in
+                Settings.blockingLevel = level
+                // Compiling a level for the first time takes a few seconds
+                // inside WebKit; the new rules apply from the next navigation
+                // either way.
+                NotificationCenter.default.post(name: .contentBlockingChanged, object: nil)
+                guard let self, let button else { return }
+                self.applyBlockingLevel(to: button, section: section)
+                self.refreshFooter(inSection: section)
+            }
+        })
+    }
+
+    /// Put the chosen appearance on its control, and build the menu that
+    /// changes it. Called again, on the same button, once one is picked.
+    ///
+    /// Setting the mode posts `.appearanceChanged`, which is what actually
+    /// repaints the app — so there is nothing to reload here beyond the title
+    /// and the tick beside it.
+    private func applyAppearanceMode(to button: UIButton) {
+        let current = Settings.appearanceMode
+        button.setTitle(current.name, for: .normal)
+        button.sizeToFit()
+        button.superview?.setNeedsLayout()
+
+        button.menu = UIMenu(title: "", children: Settings.AppearanceMode.allCases.map { mode in
+            UIAction(title: mode.name, state: mode == current ? .on : .off) {
+                [weak self, weak button] _ in
+                Settings.appearanceMode = mode
+                guard let button else { return }
+                self?.applyAppearanceMode(to: button)
+            }
+        })
+    }
+
+    /// Repaint a section footer whose words depend on a setting, without
+    /// disturbing the rows above it.
+    private func refreshFooter(inSection section: Int) {
+        guard mode == .settings, section < settingsSections.count,
+              let footer = table.footerView(forSection: section) else { return }
+
+        var configuration = footer.contentConfiguration as? UIListContentConfiguration
+                         ?? footer.defaultContentConfiguration()
+        configuration.text = settingsSections[section].footer
+        footer.contentConfiguration = configuration
+
+        // The new text needn't wrap to the same number of lines. An empty batch
+        // update re-measures the section's heights and nothing else.
+        table.performBatchUpdates(nil)
     }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
@@ -870,26 +968,19 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
             case .blockingLevelPicker:
                 cfg.text = "Block Ads & Trackers"
 
-                let currentLevel = Settings.blockingLevel
                 let menuButton = UIButton(type: .system)
-                menuButton.setTitle(currentLevel.name, for: .normal)
                 menuButton.showsMenuAsPrimaryAction = true
+                applyBlockingLevel(to: menuButton, section: indexPath.section)
 
-                let actions = BlockingLevel.allCases.map { level in
-                    UIAction(title: level.name, state: level == currentLevel ? .on : .off) { [weak self] _ in
-                        Settings.blockingLevel = level
-                        // Compiling a level for the first time takes a few
-                        // seconds inside WebKit; the new rules apply from the
-                        // next navigation either way.
-                        NotificationCenter.default.post(name: .contentBlockingChanged, object: nil)
-                        // The section footer describes the level, so the whole
-                        // section is reloaded rather than the row alone.
-                        self?.table.reloadSections(IndexSet(integer: indexPath.section),
-                                                   with: .none)
-                    }
-                }
-                menuButton.menu = UIMenu(title: "", children: actions)
-                menuButton.sizeToFit()
+                cell.accessoryView = menuButton
+                cell.selectionStyle = .none
+
+            case .appearanceModePicker:
+                cfg.text = "Appearance"
+
+                let menuButton = UIButton(type: .system)
+                menuButton.showsMenuAsPrimaryAction = true
+                applyAppearanceMode(to: menuButton)
 
                 cell.accessoryView = menuButton
                 cell.selectionStyle = .none
@@ -917,12 +1008,23 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
 
             case .action(let title):
                 cfg.text = title
-                // Every one of these opens a screen, and until now none of them
-                // said so — the About rows looked identical to Version, which
-                // opens nothing. Applied to all of them rather than to About
-                // alone: a chevron that appears on some rows that push and not
-                // others teaches the wrong thing.
-                cell.accessoryType = .disclosureIndicator
+                if title == "App Icon",
+                   let icon = AppIconViewController.preview(
+                       named: AppIconViewController.currentIconPreviewName, side: 30) {
+                    // The icon in place of the chevron, because this row's whole
+                    // subject is which one is on, and showing it answers that
+                    // without opening the screen. The row still pushes.
+                    let view = UIImageView(image: icon)
+                    view.frame = CGRect(x: 0, y: 0, width: 30, height: 30)
+                    cell.accessoryView = view
+                } else {
+                    // Every one of these opens a screen, and until now none of them
+                    // said so — the About rows looked identical to Version, which
+                    // opens nothing. Applied to all of them rather than to About
+                    // alone: a chevron that appears on some rows that push and not
+                    // others teaches the wrong thing.
+                    cell.accessoryType = .disclosureIndicator
+                }
 
             case .destructive(let title):
                 cfg.text = title
@@ -1037,7 +1139,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 switch title {
                 case "Downloads":       onShowDownloads?()
                 case "Buttons":         onShowStartBoxButtons?()
-                case "Content Blocking": onShowContentFiltering?()
+                case "Content Filtering": onShowContentFiltering?()
                 case "Wallpaper":       onShowAppearance?()
                 case "App Icon":        onShowAppIcon?()
                 case "Passwords":       onShowPasswords?()
@@ -1056,7 +1158,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                     assertionFailure("Settings row \"\(title)\" has no action")
                 }
             case .searchEnginePicker, .startPagePicker, .blockingLevelPicker,
-                 .toggle, .slider, .version:
+                 .appearanceModePicker, .toggle, .slider, .version:
                 break
             }
         }
