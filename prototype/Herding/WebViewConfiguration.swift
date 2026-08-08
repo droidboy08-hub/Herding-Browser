@@ -1070,23 +1070,31 @@ enum WebViewFactory {
     /// APIs — the technique usually called *farbling*.
     ///
     /// A fingerprinting script doesn't ask who you are; it reads a few dozen
-    /// APIs whose answers differ slightly per device — how a canvas renders text,
-    /// what the audio pipeline does to a waveform, how many cores you have — and
-    /// hashes them together. Any single answer is unremarkable; the combination
-    /// is close to unique and, crucially, *stable*, which is what makes it
-    /// worth collecting.
+    /// APIs whose answers differ slightly per device and hashes them together.
+    /// Any single answer is unremarkable; the combination is close to unique
+    /// and, crucially, *stable*, which is what makes it worth collecting. So the
+    /// readings are perturbed by an amount derived from a per-origin,
+    /// per-session key: plausible, and consistent within a page, while the
+    /// cross-site and cross-launch stability a tracker needs is gone.
     ///
-    /// Returning constants would be worse than useless: everyone reporting the
-    /// same fake value makes this browser itself the fingerprint. So the readings
-    /// are perturbed instead, by an amount derived from a per-origin,
-    /// per-session key. The values stay plausible and stay consistent within a
-    /// page — a site comparing two canvas reads in the same session sees them
-    /// agree — while the *cross-site* and cross-launch stability the tracker
-    /// needs is gone.
+    /// **Canvas and WebGL are deliberately left alone**, and that is the whole
+    /// lesson of this file. Farbling a canvas from JavaScript means replacing
+    /// `getImageData`, `toDataURL` and `toBlob`, and a bot check reads a canvas
+    /// precisely because doing so catches browsers that have. Cloudflare's
+    /// "verify you are human" failed for exactly that reason. Brave farbles
+    /// canvas on desktop — but it does it inside Blink, where there is no
+    /// replaced function to find. In a `WKWebView` there is no equivalent seam,
+    /// and Brave's own iOS browser therefore farbles no canvas at all. What it
+    /// does farble is the four things below, and this is a port of that set:
+    /// audio, plugins, speech voices, and core count.
     ///
-    /// Everything is wrapped so a failure leaves the original behaviour in
-    /// place. A page that breaks because of this is worse than a page that
-    /// fingerprints.
+    /// The trade is worth making in both directions. Canvas farbling bought
+    /// little on iOS — every iPhone of a given model rasterises identically, so
+    /// the reading is far less identifying here than on desktop — and it cost
+    /// access to any site behind a challenge.
+    ///
+    /// Each part is wrapped so a failure leaves the original behaviour in place.
+    /// A page broken by this is worse than a page that fingerprints.
     private static let fingerprintProtection = """
     (function() {
       if (window.__mbFarbled) { return; }
@@ -1110,150 +1118,171 @@ enum WebViewFactory {
         return h >>> 0;
       }
 
-      var seed = hash(KEY + '|' + (location.origin || 'null'));
-
-      // xorshift32: deterministic from the seed, so repeated reads of the same
-      // API in one session agree with each other.
-      function makeRandom(state) {
-        var s = state || 1;
-        return function() {
-          s ^= s << 13; s >>>= 0;
-          s ^= s >> 17;
-          s ^= s << 5;  s >>>= 0;
-          return s / 4294967296;
-        };
+      // xorshift32, drawn from in a fixed order, so every reading this session
+      // makes on this origin agrees with the last one.
+      var state = hash(KEY + '|' + (location.origin || 'null')) || 1;
+      function random() {
+        state ^= state << 13; state >>>= 0;
+        state ^= state >> 17;
+        state ^= state << 5;  state >>>= 0;
+        return state / 4294967296;
       }
 
-      function define(object, name, value) {
-        try {
-          Object.defineProperty(object, name, {
-            get: function() { return value; },
-            configurable: true
-          });
-        } catch (e) {}
-      }
-
-      // MARK: Canvas
-      // The classic fingerprint: draw text and read the pixels back. Rendering
-      // differs by GPU, driver and font stack, so the bytes are near-unique.
-      // Flipping the low bit of a scattered handful of pixels is invisible to a
-      // human and fatal to a hash.
-      function perturb(data) {
-        var random = makeRandom(seed);
-        var step = 977;                      // prime, so the pattern doesn't line
-        for (var i = 0; i < data.length; i += step) {
-          var delta = random() < 0.5 ? 1 : -1;
-          var v = data[i] + delta;
-          data[i] = v < 0 ? 0 : (v > 255 ? 255 : v);
-        }
-      }
-
+      // MARK: 1 — Audio
+      //
+      // The analyser's readings differ slightly by device. Scaling them by a
+      // factor just under 1 leaves the numbers inside their documented range
+      // and far below anything audible, while moving them enough to break a
+      // hash. `AudioBuffer.getChannelData` is left alone: it hands back the
+      // page's own decoded samples, and quietly altering those is a change to
+      // the audio itself rather than to a measurement of it.
       try {
-        var realGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-        CanvasRenderingContext2D.prototype.getImageData = mask(function getImageData() {
-          var result = realGetImageData.apply(this, arguments);
-          try { perturb(result.data); } catch (e) {}
-          return result;
-        }, realGetImageData);
-      } catch (e) {}
+        var fudge = 0.99 + random() * 0.01;
 
-      try {
-        // `toDataURL` and `toBlob` read the same pixels without going through
-        // `getImageData`, so they need the noise applied on their own path.
-        function farbleCanvas(canvas) {
-          var copy = document.createElement('canvas');
-          copy.width = canvas.width;
-          copy.height = canvas.height;
-          var context = copy.getContext('2d');
-          context.drawImage(canvas, 0, 0);
-          var image = realGetImageData.call(context, 0, 0, copy.width, copy.height);
-          perturb(image.data);
-          context.putImageData(image, 0, 0);
-          return copy;
-        }
-
-        var realToDataURL = HTMLCanvasElement.prototype.toDataURL;
-        HTMLCanvasElement.prototype.toDataURL = mask(function toDataURL() {
-          try {
-            return realToDataURL.apply(farbleCanvas(this), arguments);
-          } catch (e) {
-            return realToDataURL.apply(this, arguments);
-          }
-        }, realToDataURL);
-
-        var realToBlob = HTMLCanvasElement.prototype.toBlob;
-        HTMLCanvasElement.prototype.toBlob = mask(function toBlob() {
-          try {
-            return realToBlob.apply(farbleCanvas(this), arguments);
-          } catch (e) {
-            return realToBlob.apply(this, arguments);
-          }
-        }, realToBlob);
-      } catch (e) {}
-
-      // MARK: WebGL
-      // `UNMASKED_VENDOR_WEBGL` / `UNMASKED_RENDERER_WEBGL` name the exact GPU.
-      // Nothing on the page needs that; report what a generic Apple device does.
-      try {
-        [window.WebGLRenderingContext, window.WebGL2RenderingContext].forEach(function(type) {
-          if (!type) { return; }
-          var realGetParameter = type.prototype.getParameter;
-          type.prototype.getParameter = mask(function getParameter(parameter) {
-            if (parameter === 37445) { return 'Apple Inc.'; }
-            if (parameter === 37446) { return 'Apple GPU'; }
-            return realGetParameter.apply(this, arguments);
-          }, realGetParameter);
+        [[window.AnalyserNode, 'getFloatFrequencyData'],
+         [window.AnalyserNode, 'getByteFrequencyData'],
+         [window.AnalyserNode, 'getByteTimeDomainData'],
+         [window.AnalyserNode, 'getFloatTimeDomainData']].forEach(function(pair) {
+          var type = pair[0], name = pair[1];
+          if (!type || !type.prototype || !type.prototype[name]) { return; }
+          var original = type.prototype[name];
+          type.prototype[name] = mask(function() {
+            var result = original.apply(this, arguments);
+            var destination = arguments[0];
+            if (destination && destination.length) {
+              for (var i = 0; i < destination.length; i++) {
+                destination[i] = destination[i] * fudge;
+              }
+            }
+            return result;
+          }, original);
         });
       } catch (e) {}
 
-      // MARK: Audio
-      // The Web Audio pipeline produces subtly different floats per device. The
-      // noise is far below anything audible and far above hash stability.
+      // MARK: 2 — Plugins
+      //
+      // Safari reports a fixed list of five PDF entries, identical on every
+      // iPhone, so there is nothing to perturb — but a list that is *appended*
+      // to differs per origin without any entry of it being false about the
+      // device. Built on the real `Plugin` and `MimeType` prototypes, because a
+      // plain object in their place is a far louder signal than the plugin
+      // count ever was.
       try {
-        var realGetChannelData = AudioBuffer.prototype.getChannelData;
-        AudioBuffer.prototype.getChannelData = mask(function getChannelData() {
-          var data = realGetChannelData.apply(this, arguments);
-          try {
-            var random = makeRandom(seed + 1);
-            for (var i = 0; i < data.length; i += 449) {
-              data[i] = data[i] + (random() - 0.5) * 1e-7;
-            }
-          } catch (e) {}
-          return data;
-        }, realGetChannelData);
+        var plugins = window.navigator.plugins;
+        if (plugins && window.Plugin && window.MimeType && plugins.length > 0) {
+          var names = ['Portable Document Format', 'Document Viewer', 'PDF Reader'];
+          var fakeName = names[Math.floor(random() * names.length)] +
+                         ' ' + (2 + Math.floor(random() * 8));
 
-        var realFrequency = AnalyserNode.prototype.getFloatFrequencyData;
-        AnalyserNode.prototype.getFloatFrequencyData = mask(function getFloatFrequencyData(array) {
-          realFrequency.apply(this, arguments);
-          try {
-            var random = makeRandom(seed + 2);
-            for (var i = 0; i < array.length; i += 43) {
-              array[i] = array[i] + (random() - 0.5) * 1e-4;
-            }
-          } catch (e) {}
-        }, realFrequency);
+          var mime = Object.create(window.MimeType.prototype, {
+            suffixes:    { value: 'pdf' },
+            type:        { value: 'application/pdf' },
+            description: { value: '' }
+          });
+          var plugin = Object.create(window.Plugin.prototype, {
+            description: { value: '' },
+            name:        { value: fakeName },
+            filename:    { value: 'internal-pdf-viewer' },
+            length:      { value: 1 }
+          });
+          plugin[0] = mime;
+          plugin['application/pdf'] = mime;
+          Reflect.defineProperty(mime, 'enabledPlugin', { value: plugin });
+          plugin.item = function(index) { return plugin[index]; };
+
+          var prototype = Object.getPrototypeOf(plugins);
+          var realLength = plugins.length;
+
+          prototype[realLength] = plugin;
+          prototype[fakeName] = plugin;
+
+          var realItem = plugins.item;
+          prototype.item = mask(function(index) {
+            return index < realLength ? realItem.apply(this, arguments) : plugin;
+          }, realItem);
+
+          var realNamedItem = plugins.namedItem;
+          prototype.namedItem = mask(function(name) {
+            return realNamedItem.apply(this, arguments)
+                || (name === fakeName ? plugin : null);
+          }, realNamedItem);
+
+          Reflect.defineProperty(prototype, 'length', { value: realLength + 1 });
+        }
       } catch (e) {}
 
-      // MARK: Device
-      // Core count varies by model and is one of the few integers a phone gives
-      // away for free. Four is what the commonest iPhones report, so this is
-      // blending in rather than standing out.
-      define(navigator, 'hardwareConcurrency', 4);
+      // MARK: 3 — Speech voices
+      //
+      // The installed voice list is stable per device and long enough to
+      // identify one. An extra voice is appended, and any attempt to *speak*
+      // with it is redirected to the real voice it was modelled on — a fake
+      // voice cannot actually produce sound, and a site that picked it would
+      // otherwise fall silent.
+      try {
+        if (window.speechSynthesis && window.SpeechSynthesisUtterance) {
+          var voiceScale = random();
+          var fakeVoice, realVoice, requestedFake;
 
-      // Nothing else is touched here, and the omissions are deliberate.
+          var voiceProperty = Reflect.getOwnPropertyDescriptor(
+            SpeechSynthesisUtterance.prototype, 'voice');
+          if (voiceProperty && voiceProperty.get && voiceProperty.set) {
+            Reflect.defineProperty(SpeechSynthesisUtterance.prototype, 'voice', {
+              configurable: voiceProperty.configurable,
+              enumerable: voiceProperty.enumerable,
+              get: function() {
+                return requestedFake || voiceProperty.get.apply(this, arguments);
+              },
+              set: function(value) {
+                if (value === fakeVoice && realVoice !== undefined) {
+                  requestedFake = value;
+                  voiceProperty.set.apply(this, [realVoice]);
+                } else {
+                  requestedFake = undefined;
+                  voiceProperty.set.apply(this, arguments);
+                }
+              }
+            });
+          }
+
+          var synthesis = Object.getPrototypeOf(window.speechSynthesis);
+          var realGetVoices = synthesis.getVoices;
+          synthesis.getVoices = mask(function() {
+            var voices = realGetVoices.apply(this, arguments);
+            if (!voices || !voices.length) { return voices; }
+            if (fakeVoice === undefined) {
+              realVoice = voices[Math.min(voices.length - 1,
+                                          Math.round(voiceScale * voices.length))];
+              if (!realVoice) { return voices; }
+              fakeVoice = Object.create(Object.getPrototypeOf(realVoice), {
+                name:         { value: realVoice.name + ' (Enhanced)' },
+                voiceURI:     { value: realVoice.voiceURI },
+                lang:         { value: realVoice.lang },
+                localService: { value: realVoice.localService },
+                default:      { value: false }
+              });
+            }
+            voices.push(fakeVoice);
+            return voices;
+          }, realGetVoices);
+        }
+      } catch (e) {}
+
+      // MARK: 4 — Core count
       //
-      // `deviceMemory`, `connection` and `getBattery` do not exist in Safari on
-      // iOS at all. Defining them — even as `undefined` — leaves an own property
-      // where the real browser has none, so a script that asks
-      // `Object.getOwnPropertyDescriptor` finds a fingerprint that only this app
-      // has. The same went for `plugins` and `mimeTypes`: iOS already reports
-      // both as empty, and replacing them with plain arrays changed their class
-      // from `PluginArray` to `Array`, which is exactly the mismatch a bot check
-      // looks for. And forcing `languages` to `en-US` contradicted the real
-      // `navigator.language` for anyone whose phone is set to anything else.
-      //
-      // Each of those hid a detail worth roughly nothing and added a tell worth
-      // a great deal. Leaving them alone is the stronger defence.
+      // Reported as a value between 2 and the real count, never above it and
+      // never below 2 — a phone claiming one core or thirty-two is more
+      // distinctive than one telling the truth. Machines with two or fewer are
+      // left alone, there being no room to move.
+      try {
+        var coreScale = random();
+        var cores = window.navigator.hardwareConcurrency;
+        if (cores > 2) {
+          Reflect.defineProperty(window.navigator, 'hardwareConcurrency', {
+            configurable: true,
+            value: 2 + Math.round((cores - 2) * coreScale)
+          });
+        }
+      } catch (e) {}
     })();
     """
 }
