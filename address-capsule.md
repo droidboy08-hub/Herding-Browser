@@ -72,7 +72,8 @@ keeps the part that identifies the site. Truncating the other way would render
 
 **Pull-to-refresh, and nothing in the capsule.** No circular-arrow glyph, no
 button. Drag down at the top of a page to reload it, the way every browser also
-offers.
+offers. This becomes the swipe's default job — see *`swipeDownAction` becomes a
+toggle* below.
 
 This keeps the capsule to a single tap target, which is what lets it stay as
 narrow as it does.
@@ -192,26 +193,37 @@ rather than a change to how it commits.
   round button in the bottom corner", and the support page teaches the
   swipe-down gesture as the way to reach Home. Both would need rewriting.
 
-### The `swipeDownAction` setting probably dissolves
+### `swipeDownAction` becomes a toggle
 
-That setting exists to arbitrate a conflict: one downward drag, two things
-people reasonably expect it to do — open the address field, or refresh the page.
-Neither could win, so it became a preference.
+**Decided.** The swipe no longer opens Home by default. It refreshes, as it does
+in every other browser, and a setting can give Home back to it.
 
-The capsule takes over one of the two. Once tapping it opens the start box, the
-drag is free to mean refresh and only refresh, which is what it means in every
-other browser. The setting then has nothing left to decide.
+Today this is a two-option picker — *open Home* or *refresh* — and it has to be
+neutral, because whichever you pick you lose the other. Home was only reachable
+by that gesture, and refresh only by that gesture, so neither could be the
+default without taking something away.
 
-Not automatic, though. Swipe-down-to-open-Home is the app's signature gesture and
-the first thing the support page teaches. Dropping it, keeping it as a redundant
-second route, or keeping the setting as-is are all defensible, and it has not
-been decided.
+The capsule removes that symmetry. Home is now always one tap away, so declining
+the gesture costs nothing. That turns an even choice into a plain default:
+
+| | Swipe down does |
+|---|---|
+| Toggle off *(default)* | Pull to refresh |
+| Toggle on | Open Home |
+
+Wording along the lines of *"Also open Home by swiping down"*, in Home &
+Appearance beside the existing swipe sensitivity slider.
+
+**The residual, stated plainly:** with the toggle on, the swipe is spoken for and
+reload has no gesture at all — the capsule carries no reload glyph to fall back
+on. That is acceptable for something opt-in, but it means the switch really reads
+"give Home the swipe, and give up reload's". Worth saying so in the footer rather
+than letting people discover it.
 
 ---
 
 ## Open questions
 
-1. Does swipe-down still open Home, now that the capsule does? (above)
-2. Is having no way to stop a loading page acceptable?
-3. Does the capsule appear when `startPage == .startBox`, as the refresh button
+1. Is having no way to stop a loading page acceptable?
+2. Does the capsule appear when `startPage == .startBox`, as the refresh button
    does not?
