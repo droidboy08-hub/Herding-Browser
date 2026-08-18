@@ -639,22 +639,20 @@ final class BrowserViewController: UIViewController {
         // Retries start from the same web view, so they carry the page's cookies.
         DownloadManager.shared.webView = webView
         observeSameDocumentNavigations()
-        // Full-bleed to the top edge; the scroll view auto-insets its content by
-        // the safe area, so pages start below the Dynamic Island but their content
-        // scrolls UNDER the top (revealing it through the frosted bar below).
-        // `.never`, with the insets applied by hand in `updateContentInsets`.
+        // UIKit insets the content by the safe area, and the page scrolls
+        // under the strip from there. This is left to UIKit deliberately.
         //
-        // `.always` let UIKit inset the content below the safe area, which put
-        // the page *under* the status bar only while it was moving — at rest
-        // there was nothing behind the glass to blur, so the bar was a frosted
-        // pane over the app's own background. Taking the insets over means the
-        // web view is genuinely full-screen and the content is continuous
-        // beneath the glass at every scroll position.
+        // It was `.never` with the insets applied by hand, for the frosted bar
+        // that used to live up there: a blur needs content underneath it at
+        // rest, not only while scrolling. That bar is gone, and the hand-rolled
+        // version cost more than it ever bought — UIKit does not move
+        // `contentOffset` when `contentInset` changes, so every moment the
+        // insets were recomputed was a chance to leave a page resting a safe
+        // area too high, drawn under the Dynamic Island.
         //
-        // This is scroll inset, not layout: the page's own viewport and its
-        // `env(safe-area-inset-*)` are untouched, so nothing about the site's
-        // layout moves.
-        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        // Brave does not touch this either; its status-bar overlay is a plain
+        // view over an otherwise ordinary web view.
+        webView.scrollView.contentInsetAdjustmentBehavior = .always
         // Hard fallback: kill the scroll view's own pinch-zoom recognizer.
         applyZoomPolicy()
         view.addSubview(webView)
@@ -669,7 +667,6 @@ final class BrowserViewController: UIViewController {
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
-        updateContentInsets()
 
         progressObservation = webView.observe(\.estimatedProgress, options: .new) { [weak self] wv, _ in
             self?.updateProgress(Float(wv.estimatedProgress))
@@ -843,23 +840,23 @@ final class BrowserViewController: UIViewController {
         if scrollView.zoomScale != 1 { scrollView.setZoomScale(1, animated: false) }
     }
 
-    /// The insets UIKit is no longer applying.
+    /// Reserve room for the capsule, on top of what the device already asks for.
     ///
-    /// Top holds the page clear of the status bar and Dynamic Island at rest,
-    /// while leaving it free to scroll underneath. Bottom keeps the last of the
-    /// page reachable above the home indicator and the capsule sitting there.
-    private func updateContentInsets() {
-        guard webView != nil else { return }
-        let top = view.safeAreaInsets.top
-        let bottom = max(view.safeAreaInsets.bottom, AddressCapsule.height)
-        let insets = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
-        webView.scrollView.contentInset = insets
-        webView.scrollView.verticalScrollIndicatorInsets = insets
-    }
-
-    override func viewSafeAreaInsetsDidChange() {
-        super.viewSafeAreaInsetsDidChange()
-        updateContentInsets()
+    /// The capsule hangs *below* the safe area (see `setupAddressCapsule`), so
+    /// the page's own bottom inset does not clear it and the last of the page
+    /// would sit underneath. This is the supported way to say so — UIKit adds it
+    /// to the safe area, and the scroll view's own adjustment picks it up from
+    /// there.
+    ///
+    /// Measured against the *window's* inset rather than the view's, because
+    /// ours is added to the view's: reading that back would feed this into
+    /// itself.
+    private func updateAdditionalInsets() {
+        let deviceBottom = view.window?.safeAreaInsets.bottom ?? 0
+        let wanted = AddressCapsule.height + 16
+        let extra = max(0, wanted - deviceBottom)
+        guard abs(additionalSafeAreaInsets.bottom - extra) > 0.5 else { return }
+        additionalSafeAreaInsets.bottom = extra
     }
 
     /// Scrolling down hides the capsule; scrolling up, or reaching the top,
@@ -904,6 +901,7 @@ final class BrowserViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateAdditionalInsets()
     }
 
 
