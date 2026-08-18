@@ -319,12 +319,38 @@ enum WebViewFactory {
 
     /// Disable pinch-to-zoom site-wide by forcing a non-scalable viewport.
     /// Double-tap zoom and scrolling are untouched.
+    ///
+    /// Held in place by an observer, like the desktop viewport is. Setting the
+    /// tag once at document end is not enough: a single-page app writes its own
+    /// viewport when it hydrates and on every route change after that, which
+    /// silently handed zoom back on exactly the sites most likely to be running
+    /// one. `apply` is a no-op when the tag already says what it should, so the
+    /// observer cannot drive itself in a loop.
     private static let disablePinchZoom = """
-    var m = document.querySelector('meta[name=viewport]');
-    if (!m) { m = document.createElement('meta'); m.name = 'viewport';
-              document.head.appendChild(m); }
-    m.setAttribute('content',
-      'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+    (function() {
+      var CONTENT =
+        'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+
+      function apply() {
+        var m = document.querySelector('meta[name=viewport]');
+        if (!m) {
+          m = document.createElement('meta');
+          m.name = 'viewport';
+          (document.head || document.documentElement).appendChild(m);
+        }
+        if (m.getAttribute('content') === CONTENT) { return; }
+        m.setAttribute('content', CONTENT);
+      }
+
+      apply();
+
+      try {
+        new MutationObserver(apply).observe(document.head || document.documentElement, {
+          childList: true, subtree: true,
+          attributes: true, attributeFilter: ['content', 'name']
+        });
+      } catch (e) {}
+    })();
     """
 
     /// Let every page be pinched, including the ones that say no.
@@ -365,7 +391,11 @@ enum WebViewFactory {
     /// viewport tag after load — most single-page apps do — would otherwise put
     /// the mobile layout straight back. `apply` is a no-op when the tag already
     /// says what it should, so the observer can't drive itself in a loop.
-    private static let desktopViewport = """
+    /// Computed, because whether the desktop layout may be pinched is the Zoom
+    /// setting's business — not the desktop setting's.
+    private static var desktopViewport: String {
+        let scalable = Settings.allowZoom
+        return """
     (function() {
       var WIDTH = 1280;   // wide enough for a desktop breakpoint, narrow enough to read
 
@@ -380,12 +410,24 @@ enum WebViewFactory {
         // scale, which is exactly the number the page has to be shrunk into.
         var available = window.screen.width || window.innerWidth || WIDTH;
         var scale = Math.min(1, available / WIDTH);
-        var content = 'width=' + WIDTH
-                    + ', initial-scale=' + scale.toFixed(4)
-                    // Enough room below the fitted scale to pull back further,
-                    // and well above it to read the small print.
-                    + ', minimum-scale=' + (scale / 2).toFixed(4)
-                    + ', maximum-scale=10, user-scalable=yes';
+        // With Zoom off, the page is pinned at the scale that fits — the
+        // desktop layout, and no pinching. This used to force `user-scalable=yes`
+        // on the grounds that asking for the desktop site is asking to be
+        // zoomed out; but being zoomed out is what `initial-scale` does, and
+        // overriding the Zoom switch from here made that switch a lie on every
+        // site the user had set to desktop.
+        var content = \(scalable)
+          ? 'width=' + WIDTH
+              + ', initial-scale=' + scale.toFixed(4)
+              // Enough room below the fitted scale to pull back further, and
+              // well above it to read the small print.
+              + ', minimum-scale=' + (scale / 2).toFixed(4)
+              + ', maximum-scale=10, user-scalable=yes'
+          : 'width=' + WIDTH
+              + ', initial-scale=' + scale.toFixed(4)
+              + ', minimum-scale=' + scale.toFixed(4)
+              + ', maximum-scale=' + scale.toFixed(4)
+              + ', user-scalable=no';
         if (m.getAttribute('content') === content) { return; }
         m.setAttribute('content', content);
       }
@@ -400,6 +442,7 @@ enum WebViewFactory {
       } catch (e) {}
     })();
     """
+    }
 
     /// Same-document navigation reporter.
     ///

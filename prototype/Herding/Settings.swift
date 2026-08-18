@@ -274,17 +274,32 @@ enum Settings {
         }
     }
 
-    /// What a downward swipe on a page does.
+    /// Whether the downward swipe opens the start box — and, with it, what a
+    /// tap on the address capsule does.
     ///
-    /// The gesture is the browser's only chrome, so which of the two things it
-    /// should do is genuinely a matter of taste — one person reaches for the
-    /// address box, another expects pull-to-refresh.
-    static var swipeDownAction: SwipeDownAction {
+    /// One switch moving two bindings, which trade jobs rather than one of them
+    /// going dark:
+    ///
+    /// |            | Swipe down      | Tap capsule       |
+    /// |------------|-----------------|-------------------|
+    /// | off        | Pull to refresh | Open the start box|
+    /// | on         | Open the start box | Reload         |
+    ///
+    /// Both positions cover both functions. That is the whole point, and it is
+    /// what the two-option picker this replaces got wrong: it asked *"should the
+    /// swipe open Home?"*, and answering yes left reload with no gesture at all.
+    /// The picker had to be neutral because there was nowhere else to put the
+    /// loser; the capsule is that somewhere, so this can have an honest default.
+    static var swipeOpensStartBox: Bool {
         get {
-            d.string(forKey: "settings.swipeDownAction")
-                .flatMap(SwipeDownAction.init(rawValue:)) ?? .startBox
+            // Carried over from the picker, so an existing choice survives.
+            if d.object(forKey: "settings.swipeOpensStartBox") == nil,
+               let legacy = d.string(forKey: "settings.swipeDownAction") {
+                return legacy == "startBox"
+            }
+            return bool("settings.swipeOpensStartBox", default: false)
         }
-        set { d.set(newValue.rawValue, forKey: "settings.swipeDownAction") }
+        set { d.set(newValue, forKey: "settings.swipeOpensStartBox") }
     }
 
     /// Whether the current tab asked for the desktop version of a site.
@@ -377,6 +392,8 @@ enum Settings {
 extension Notification.Name {
     /// The interface style or the wallpaper changed.
     static let appearanceChanged = Notification.Name("Herding.appearanceChanged")
+    /// The swipe-down binding moved, so the gesture and the capsule swap jobs.
+    static let swipeBindingChanged = Notification.Name("Herding.swipeBindingChanged")
     /// Something changed that alters which scripts are injected into a page.
     /// The listener rebuilds the script set and reloads, because a viewport is
     /// applied while the document is loading and can't be revised afterwards.

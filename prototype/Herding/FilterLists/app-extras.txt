@@ -31,3 +31,15 @@ m.youtube.com##ytm-promoted-video-renderer
 m.youtube.com##ytm-promoted-sparkles-web-renderer
 m.youtube.com##ytm-compact-promoted-video-renderer
 m.youtube.com##ytm-companion-slot-renderer
+
+! ---------------------------------------------------------------------------
+! Scareware / fake-alert ad networks.
+!
+! These serve the "(3) Potential Threats Found!" and "Your phone has VIRUSES"
+! dialogs — spoofed system UI whose only purpose is a notification-permission
+! prompt or an install. They reach a page as a `<script>` a first-party bundle
+! appends to the head, so nothing that only watches fetch/XHR can see them.
+!
+! The domains rotate constantly, which is why the general lists lag behind and
+! why these are kept here rather than waited for upstream.
+||topperanlases.com^

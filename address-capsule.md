@@ -1,6 +1,8 @@
 # Address Capsule — Specification
 
-Status: **specified, not built.** Nothing in this document exists in the app yet.
+Status: **built.** Implemented in `prototype/Herding/AddressCapsule.swift` and
+wired up in `BrowserViewController`. Both open questions below were decided in
+the course of building it; their answers are recorded there.
 
 A small permanent control at the bottom of the screen, replacing the round
 refresh button. It shows which site you are on and is the way into the start
@@ -193,37 +195,48 @@ rather than a change to how it commits.
   round button in the bottom corner", and the support page teaches the
   swipe-down gesture as the way to reach Home. Both would need rewriting.
 
-### `swipeDownAction` becomes a toggle
+### `swipeDownAction` becomes a toggle that swaps two bindings
 
-**Decided.** The swipe no longer opens Home by default. It refreshes, as it does
-in every other browser, and a setting can give Home back to it.
+**Decided.** One switch, and it moves the swipe and the capsule tap together —
+they trade jobs rather than one of them going dark.
 
-Today this is a two-option picker — *open Home* or *refresh* — and it has to be
-neutral, because whichever you pick you lose the other. Home was only reachable
-by that gesture, and refresh only by that gesture, so neither could be the
-default without taking something away.
+| | Swipe down | Tap capsule |
+|---|---|---|
+| Toggle off *(default)* | Pull to refresh | Open the start box |
+| Toggle on | Open the start box | Reload |
 
-The capsule removes that symmetry. Home is now always one tap away, so declining
-the gesture costs nothing. That turns an even choice into a plain default:
+Both states cover both functions. That is the point, and it is what the earlier
+version of this section got wrong: treating the setting as *"should the swipe
+open Home?"* meant that answering yes left reload with no gesture at all. Moving
+both bindings at once costs nothing in either position.
 
-| | Swipe down does |
-|---|---|
-| Toggle off *(default)* | Pull to refresh |
-| Toggle on | Open Home |
+Today the setting is a two-option picker, and it has to be neutral, because Home
+was reachable only by that swipe and refresh only by that swipe — whichever you
+chose, you lost the other. With the capsule there is a second surface to put the
+loser on, so there can be an honest default.
 
-Wording along the lines of *"Also open Home by swiping down"*, in Home &
-Appearance beside the existing swipe sensitivity slider.
+Wording along the lines of *"Open Home by swiping down"*, in Home & Appearance
+beside the existing swipe sensitivity slider. The footer should say what else
+moves, because the switch changes two things and names one:
+*"The capsule reloads instead."*
 
-**The residual, stated plainly:** with the toggle on, the swipe is spoken for and
-reload has no gesture at all — the capsule carries no reload glyph to fall back
-on. That is acceptable for something opt-in, but it means the switch really reads
-"give Home the swipe, and give up reload's". Worth saying so in the footer rather
-than letting people discover it.
+**Whichever route opens the start box carries the current URL and commits in the
+same tab.** That behaviour belongs to the start box, not to the gesture that
+opened it — otherwise turning the toggle on would quietly cost same-tab URL
+editing. A blank start box for a genuinely new tab stays where it already is:
+*New Tab* in the long-press menu, and **+** in the tab list.
 
 ---
 
 ## Open questions
 
-1. Is having no way to stop a loading page acceptable?
-2. Does the capsule appear when `startPage == .startBox`, as the refresh button
-   does not?
+1. ~~Is having no way to stop a loading page acceptable?~~ **Decided:** with the
+   toggle **on**, the capsule tap reloads, and reloads become *stop* while
+   `webView.isLoading` — exactly the job the discarded glyph would have done.
+   With the toggle **off** there is still no stop control, which is the honest
+   cost of keeping the capsule to one tap target.
+2. ~~Does the capsule appear when `startPage == .startBox`?~~ **Decided: yes**,
+   unlike the refresh button it replaces. That button hid there because it was a
+   reload control with nothing to reload. The capsule's job is to say which site
+   you are on, and that matters exactly as much in that configuration as in any
+   other.

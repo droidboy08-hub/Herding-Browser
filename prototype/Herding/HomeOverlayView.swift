@@ -311,8 +311,20 @@ final class HomeOverlayView: UIView {
             name: BookmarkStore.didChangeNotification, object: nil)
         downloadsChanged()   // a download may already be running at launch
 
+        // On the overlay itself, not on the blur.
+        //
+        // The blur is near the bottom of the stack and `glassContainer` covers
+        // the whole screen above it, so a tap outside the card landed on the
+        // container and never reached the backdrop at all — which is why
+        // tapping away did nothing. A recogniser on the overlay sees every
+        // touch, and the delegate below is what keeps it from stealing the ones
+        // meant for the card.
         let tap = UITapGestureRecognizer(target: self, action: #selector(backdropTapped))
-        blurBackdrop.contentView.addGestureRecognizer(tap)
+        tap.delegate = self
+        // The card's own controls keep their touches; this only ever fires for
+        // touches the delegate has already decided are outside everything.
+        tap.cancelsTouchesInView = false
+        addGestureRecognizer(tap)
 
         // Keep the glass edge highlight correct across light/dark switches.
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: HomeOverlayView, _) in
@@ -404,7 +416,10 @@ final class HomeOverlayView: UIView {
 
     // MARK: - Presentation
 
-    func present(over hasPage: Bool, animated: Bool) {
+    /// - Parameter editing: the current address, when the box was opened to
+    ///   edit it rather than to start something new. Carried into the field and
+    ///   selected, so typing replaces it and a return keeps you in this tab.
+    func present(over hasPage: Bool, animated: Bool, editing: URL? = nil) {
         isHidden = false
         panel.historyChanged()      // whatever loaded while we were away
         solidBackdrop.alpha = hasPage ? 0 : 1
@@ -419,7 +434,14 @@ final class HomeOverlayView: UIView {
         // would keep whatever height the last keyboard event left behind.
         keyboardHeight = 0
         panelHeight.constant = Self.tallPanelHeight
-        field.text = ""
+        field.text = editing?.absoluteString ?? ""
+        if editing != nil {
+            // Focused and fully selected: the address is there to be read or
+            // replaced, and having to clear it first would make editing it
+            // slower than retyping it.
+            field.becomeFirstResponder()
+            field.selectAll(nil)
+        }
 
         // Pinned open, the panel comes up with the box instead of waiting for a
         // button. `panel.mode` is whatever it was last showing, so the box comes
@@ -607,6 +629,23 @@ final class HomeOverlayView: UIView {
 }
 
 // MARK: - UITextFieldDelegate
+
+extension HomeOverlayView: UIGestureRecognizerDelegate {
+
+    /// Only the empty space counts as "outside".
+    ///
+    /// Refusing to begin — rather than filtering in the handler — means the
+    /// recogniser never competes with the card's own buttons, text field or
+    /// scrolling for a touch that was always meant for them.
+    override func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+        // Converted, not compared raw: `card` and `panel` are laid out inside
+        // `stack`, which is itself inside the glass container, so their frames
+        // are in neither the overlay's coordinate space nor each other's.
+        if card.bounds.contains(gesture.location(in: card)) { return false }
+        if !panel.isHidden, panel.bounds.contains(gesture.location(in: panel)) { return false }
+        return true
+    }
+}
 
 extension HomeOverlayView: UITextFieldDelegate {
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {

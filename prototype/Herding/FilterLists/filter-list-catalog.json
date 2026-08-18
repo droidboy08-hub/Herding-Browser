@@ -16,6 +16,22 @@
   "langs": []
  },
  {
+  "id": "badware-risks",
+  "title": "Scareware & badware",
+  "desc": "Fake virus alerts, spoofed system dialogs and malvertising domains",
+  "url": "https://ublockorigin.github.io/uAssets/filters/badware.txt",
+  "defaultEnabled": true,
+  "langs": []
+ },
+ {
+  "id": "adguard-popups",
+  "title": "Pop-up and pop-under blocker",
+  "desc": "AdGuard's pop-up filter — the networks behind redirect and pop-under ads",
+  "url": "https://filters.adtidy.org/extension/ublock/filters/19.txt",
+  "defaultEnabled": true,
+  "langs": []
+ },
+ {
   "id": "AC023D22-AE88-4060-A978-4FEEEC4221693",
   "title": "Cookie notice blocker",
   "desc": "EasyList Cookie",

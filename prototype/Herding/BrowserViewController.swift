@@ -11,29 +11,38 @@ import SafariServices
 final class BrowserViewController: UIViewController {
 
     private var webView: WKWebView!
-    private let topBar = UIView()   // solid, adapts to the site color
-    private let refreshButton = UIView()            // host: holds the glass + progress ring
-    /// Interactive glass: this is a button, and giving under the finger is half
-    /// of what makes it read as one without a border or a fill.
-    private let refreshGlass = GlassSurface.makeView(radius: 26, interactive: true)
-    /// A menu glyph rather than a reload arrow: the button carries everything
-    /// the browser can do to the page, and reload is one item in that list
-    /// rather than the whole of it. Load progress is drawn by the ring around
-    /// the button, so nothing is lost by the icon no longer being an arrow.
+    /// The strip over the status bar / Dynamic Island.
     ///
-    /// SF Symbols has no vertical ellipsis — `ellipsis.vertical` names nothing,
-    /// and asking for it returns nil and draws an empty button. So the
-    /// horizontal one is turned on its side by `iconRotation`, which every
-    /// transform applied to this view has to compose with rather than replace.
-    private let refreshIcon = UIImageView(image: UIImage(systemName: "ellipsis"))
-    private static let iconRotation = CGAffineTransform(rotationAngle: .pi / 2)
-    /// Invisible, fills the glass circle. A `UIButton` rather than a tap
-    /// recogniser because only a button can make a menu its *primary* action —
-    /// which is what lets the same control open the menu on a tap in one mode
-    /// and reload on a tap in the other.
-    private let refreshHitButton = ExpandedHitButton(type: .system)
-    private let progressRing = CAShapeLayer()       // page-load progress, drawn around the button
-    /// Sweeps around the button while the button is held, arriving as the menu
+    /// Painted the page's own background colour, so it reads as the page
+    /// running to the top of the screen rather than as a band above it. There
+    /// is deliberately no blur, no glass and no tint of our own on any OS
+    /// version: any of those makes the strip a *surface*, and a surface is the
+    /// thing this is trying not to be.
+    ///
+    /// Still a visual-effect view rather than a plain one only because the
+    /// hierarchy below it is built into `contentView`; `effect` stays nil.
+    private let topBar = UIVisualEffectView(effect: nil)
+    /// The site colour, over the blur. Separate from the bar because the blur's
+    /// own view can't carry a background colour without cancelling the blur.
+    private let topTint = UIView()
+    /// The line along the bottom of the blurred bar.
+    private let topHairline = UIView()
+    /// The only chrome shown over a page: which site you are on, and the way
+    /// into the start box, the page menu and the other tabs. Replaces the round
+    /// refresh button — reload is now pull-to-refresh. See `AddressCapsule`.
+    private let addressCapsule = AddressCapsule()
+    /// Whether this load has run long enough to be worth drawing. See
+    /// `beginProgress` — a cached page finishing in 80ms would otherwise draw a
+    /// flicker that reads as a glitch.
+    private var progressDeserved = false
+    private var progressTimer: Timer?
+    /// Whether the start box was opened to edit this tab's address. See
+    /// `revealHome(editingCurrentURL:)`.
+    private var editingCurrentTab = false
+    private var scrollObs: NSKeyValueObservation?
+    private var zoomObs: NSKeyValueObservation?
+    private var swipeBindingObserver: NSObjectProtocol?
+    private var lastScrollY: CGFloat = 0
     /// The second window, while one is open. See `PopupWindowController`.
     private weak var popupWindow: PopupWindowController?
     /// A blocking change arrived while the start box was up; the page it
@@ -42,6 +51,8 @@ final class BrowserViewController: UIViewController {
     private var themeColorObs: NSKeyValueObservation?
     private var underPageObs: NSKeyValueObservation?
     private var currentTopColor: UIColor?
+    /// Drives the top strip's slide, so the two directions can't fight.
+    private var isTopBarConcealed = false
     private let homeOverlay = HomeOverlayView()
     private var progressObservation: NSKeyValueObservation?
     private var hasLoadedPage = false
@@ -195,7 +206,7 @@ final class BrowserViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         setupWebView()
-        setupRefreshButton()
+        setupAddressCapsule()
         setupHomeOverlay()
         setupGestures()
         setupControlCenterAudioControls()
@@ -298,6 +309,7 @@ final class BrowserViewController: UIViewController {
         case .light:  view.window?.overrideUserInterfaceStyle = .light
         case .dark:   view.window?.overrideUserInterfaceStyle = .dark
         }
+        applyTopColor()
         homeOverlay.reloadWallpaper()
         homeOverlay.reloadFavourites()
         homeOverlay.reloadStartBoxButtons()
@@ -399,7 +411,7 @@ final class BrowserViewController: UIViewController {
     deinit {
         for observer in [foregroundObserver, backgroundObserver, mediaSettingsObserver,
                          pageScriptsObserver, blockingObserver, appearanceObserver,
-                         favouritesObserver].compactMap({ $0 }) {
+                         favouritesObserver, swipeBindingObserver].compactMap({ $0 }) {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -411,7 +423,9 @@ final class BrowserViewController: UIViewController {
         tabManager.restore()
         if let tab = tabManager.selectedTab {
             hasLoadedPage = true
-            refreshButton.isHidden = Settings.startPage == .startBox
+            addressCapsule.show(url: webView.url)
+            // The strip travels with the capsule, so it has to be put back with it.
+            setTopBarConcealed(false, animated: false)
             // The overlay starts out visible — that's the no-tabs launch state,
             // and its backdrop is opaque. Restoring a tab has to take it down, or
             // the restored page loads behind a white screen the user can't even
@@ -534,13 +548,27 @@ final class BrowserViewController: UIViewController {
     private func closeAllTabs() {
         tabManager.removeAllTabs()
         hasLoadedPage = false
-        refreshButton.isHidden = true
+        addressCapsule.isHidden = true
         webView.load(URLRequest(url: URL(string: "about:blank")!))
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
         guard let lum = currentTopColor?.luminance else { return .default }
         return lum > 0.6 ? .darkContent : .lightContent
+    }
+
+    /// Let the home indicator dim itself while a page is being read.
+    ///
+    /// It never disappears — the system fades it to a faint line after a moment
+    /// of inactivity and brings it straight back on the next touch. That is the
+    /// whole effect, and it is the same one Safari gets; there is no API that
+    /// removes it outright.
+    ///
+    /// Only over a page. On the start box it stays at full strength, because
+    /// that screen is a thing you are actively using rather than reading
+    /// through, and a dimmed indicator there just looks broken.
+    override var prefersHomeIndicatorAutoHidden: Bool {
+        hasLoadedPage && homeOverlay.isHidden
     }
 
     // Background audio is claimed when media actually starts playing, not at
@@ -553,17 +581,42 @@ final class BrowserViewController: UIViewController {
     private func setupWebView() {
         installWebView()
 
-        // Solid bar over the top safe area (status bar / Dynamic Island) that
-        // adapts to the site color. Height tracks the safe-area top automatically.
+        // Bar over the top safe area (status bar / Dynamic Island), adapting to
+        // the site colour. Height tracks the safe-area top automatically.
+        //
+        // The web view already spans the full height with `.always` inset
+        // adjustment, so page content passes *under* this strip as it scrolls —
+        // which is the whole reason a blur here shows anything at all rather
+        // than a pane of frosted background colour.
         topBar.translatesAutoresizingMaskIntoConstraints = false
-        topBar.backgroundColor = .systemBackground
         view.addSubview(topBar)
+        topTint.translatesAutoresizingMaskIntoConstraints = false
+        topBar.contentView.addSubview(topTint)
         NSLayoutConstraint.activate([
             topBar.topAnchor.constraint(equalTo: view.topAnchor),
             topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             topBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+
+            topTint.topAnchor.constraint(equalTo: topBar.contentView.topAnchor),
+            topTint.bottomAnchor.constraint(equalTo: topBar.contentView.bottomAnchor),
+            topTint.leadingAnchor.constraint(equalTo: topBar.contentView.leadingAnchor),
+            topTint.trailingAnchor.constraint(equalTo: topBar.contentView.trailingAnchor),
         ])
+
+        topHairline.translatesAutoresizingMaskIntoConstraints = false
+        topHairline.backgroundColor = .separator
+        topBar.contentView.addSubview(topHairline)
+        NSLayoutConstraint.activate([
+            topHairline.bottomAnchor.constraint(equalTo: topBar.contentView.bottomAnchor),
+            topHairline.leadingAnchor.constraint(equalTo: topBar.contentView.leadingAnchor),
+            topHairline.trailingAnchor.constraint(equalTo: topBar.contentView.trailingAnchor),
+            // One device pixel, not one point — a point-thick rule reads as a
+            // border someone drew rather than as the edge of a surface.
+            topHairline.heightAnchor.constraint(
+                equalToConstant: 1 / UIScreen.main.scale),
+        ])
+        applyTopColor()
     }
 
     /// Build the web view itself and put it in the view hierarchy.
@@ -589,17 +642,34 @@ final class BrowserViewController: UIViewController {
         // Full-bleed to the top edge; the scroll view auto-insets its content by
         // the safe area, so pages start below the Dynamic Island but their content
         // scrolls UNDER the top (revealing it through the frosted bar below).
-        webView.scrollView.contentInsetAdjustmentBehavior = .always
+        // `.never`, with the insets applied by hand in `updateContentInsets`.
+        //
+        // `.always` let UIKit inset the content below the safe area, which put
+        // the page *under* the status bar only while it was moving — at rest
+        // there was nothing behind the glass to blur, so the bar was a frosted
+        // pane over the app's own background. Taking the insets over means the
+        // web view is genuinely full-screen and the content is continuous
+        // beneath the glass at every scroll position.
+        //
+        // This is scroll inset, not layout: the page's own viewport and its
+        // `env(safe-area-inset-*)` are untouched, so nothing about the site's
+        // layout moves.
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         // Hard fallback: kill the scroll view's own pinch-zoom recognizer.
-        webView.scrollView.pinchGestureRecognizer?.isEnabled = false
-        webView.scrollView.bouncesZoom = false
+        applyZoomPolicy()
         view.addSubview(webView)
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: view.topAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            // Full height, deliberately. Shortening the viewport to make room
+            // for the capsule moves the *site's* own layout — its bottom bar
+            // included — which is changing someone else's page to make room for
+            // ours. The capsule goes lower instead.
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+
+        updateContentInsets()
 
         progressObservation = webView.observe(\.estimatedProgress, options: .new) { [weak self] wv, _ in
             self?.updateProgress(Float(wv.estimatedProgress))
@@ -609,150 +679,235 @@ final class BrowserViewController: UIViewController {
         themeColorObs = webView.observe(\.themeColor, options: [.initial, .new]) { [weak self] _, _ in
             self?.applyTopColor()
         }
+        // Hide the capsule while reading forward, bring it back on the way up.
+        //
+        // KVO on the offset rather than the scroll view's delegate: that
+        // delegate belongs to WebKit, and taking it is both unsupported and a
+        // good way to break scrolling in ways that only show up on some pages.
+        lastScrollY = webView.scrollView.contentOffset.y
+        scrollObs = webView.scrollView.observe(\.contentOffset, options: [.new]) {
+            [weak self] scrollView, _ in
+            Task { @MainActor in self?.scrolled(scrollView) }
+        }
+        // WebKit re-derives the zoom limits whenever the viewport changes, which
+        // on a single-page app is long after the load finished. Watching the
+        // scale itself is the only way to catch every one of those.
+        zoomObs = webView.scrollView.observe(\.zoomScale, options: [.new]) {
+            [weak self] scrollView, _ in
+            Task { @MainActor in
+                guard let self, !Settings.allowZoom, scrollView.zoomScale != 1 else { return }
+                scrollView.setZoomScale(1, animated: false)
+            }
+        }
         underPageObs = webView.observe(\.underPageBackgroundColor, options: [.new]) { [weak self] _, _ in
             self?.applyTopColor()
         }
     }
 
+    /// Paint the strip the colour of the page behind it.
+    ///
+    /// `underPageBackgroundColor` first, and `themeColor` only as a fallback,
+    /// which is the opposite of what a browser tinting its toolbar would do.
+    /// The two answer different questions. `themeColor` is the `<meta>` tag —
+    /// a brand colour a site nominates for browser furniture, frequently
+    /// nothing like the page itself. `underPageBackgroundColor` is what WebKit
+    /// paints beyond the document's own bounds when the page is rubber-banded,
+    /// which makes it *by construction* the colour the page continues in. This
+    /// strip is pretending to be more page, so that is the one it wants.
     private func applyTopColor() {
-        let color = webView.themeColor ?? webView.underPageBackgroundColor
+        let color = webView.underPageBackgroundColor ?? webView.themeColor
         currentTopColor = color
-        UIView.animate(withDuration: 0.25) {
-            // Plain solid bar in the site color.
-            self.topBar.backgroundColor = color ?? .systemBackground
+
+        topBar.isHidden = false
+        // The system's scroll edge effect is explicitly not used. It dissolves
+        // content into a soft edge, which announces the boundary this is trying
+        // to erase.
+        if #available(iOS 26.0, *) {
+            webView.scrollView.topEdgeEffect.isHidden = true
         }
+        topHairline.isHidden = true
+
+        // No blur, no glass, no wash — on any OS version. The strip *is* the
+        // page's background, so there is no seam to soften and nothing to see
+        // through. Anything layered on top would give the band back its edges.
+        topBar.effect = nil
+        UIView.animate(withDuration: 0.25) {
+            self.topTint.backgroundColor = color ?? .systemBackground
+        }
+
         setNeedsStatusBarAppearanceUpdate()
+    }
+
+    /// Slide the strip up out of the way, and back.
+    ///
+    /// Moved by the same scroll signal as the capsule, so the page reaches the
+    /// physical top of the screen while reading. The strip is opaque and exactly
+    /// safe-area tall, so translating it by its own height puts it cleanly
+    /// off-screen and reveals the page that was already scrolling underneath.
+    private func setTopBarConcealed(_ concealed: Bool, animated: Bool = true) {
+        guard concealed != isTopBarConcealed else { return }
+        isTopBarConcealed = concealed
+        let height = topBar.bounds.height
+        // Nothing to hide behind on a device with no top inset.
+        guard height > 0 else { return }
+        let move = {
+            self.topBar.transform = concealed
+                ? CGAffineTransform(translationX: 0, y: -height)
+                : .identity
+        }
+        guard animated else { move(); return }
+        UIView.animate(springDuration: 0.34, bounce: 0.1, animations: move)
     }
 
     /// Floating glass refresh button, bottom-right over the page. Tap reloads,
     /// long-press hard-reloads ignoring cache. Page-load progress draws as a ring
     /// around it (there is no top progress bar).
-    private func setupRefreshButton() {
-        let size: CGFloat = 52
-        refreshButton.translatesAutoresizingMaskIntoConstraints = false
-        refreshButton.layer.masksToBounds = false          // ring must not clip
-        GlassSurface.applyFallbackShadow(to: refreshButton, opacity: 0.18, radius: 12,
-                                         offset: CGSize(width: 0, height: 5))
-        view.addSubview(refreshButton)
-
-        // Circular glass body.
-        refreshGlass.translatesAutoresizingMaskIntoConstraints = false
-        GlassSurface.applyFallbackEdge(to: refreshGlass,
-                                       color: UIColor.white.withAlphaComponent(0.35).cgColor)
-        refreshButton.addSubview(refreshGlass)
-
-        refreshIcon.translatesAutoresizingMaskIntoConstraints = false
-        refreshIcon.tintColor = .label
-        refreshIcon.contentMode = .scaleAspectFit
-        refreshIcon.transform = Self.iconRotation
-        refreshIcon.accessibilityLabel = "Reload"
-        refreshIcon.preferredSymbolConfiguration =
-            UIImage.SymbolConfiguration(pointSize: 19, weight: .semibold)
-        refreshGlass.contentView.addSubview(refreshIcon)
-
-        // Progress ring traces the squircle's outline as the page loads.
-        progressRing.fillColor = UIColor.clear.cgColor
-        progressRing.strokeColor = UIColor.tintColor.cgColor
-        progressRing.lineWidth = 3
-        progressRing.lineCap = .round
-        progressRing.strokeEnd = 0
-        progressRing.opacity = 0
-        refreshButton.layer.addSublayer(progressRing)
-
+    /// The address capsule: bottom centre, over the page.
+    ///
+    /// Bottom *centre* and not bottom-trailing, where the round button sat. The
+    /// trailing strip is where the forward-navigation edge swipe lives, and a
+    /// left-swipe starting on a capsule pinned there would race it.
+    private func setupAddressCapsule() {
+        view.addSubview(addressCapsule)
         NSLayoutConstraint.activate([
-            refreshButton.widthAnchor.constraint(equalToConstant: size),
-            refreshButton.heightAnchor.constraint(equalToConstant: size),
-            refreshButton.trailingAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -18),
-            refreshButton.bottomAnchor.constraint(
-                equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18),
-
-            refreshGlass.topAnchor.constraint(equalTo: refreshButton.topAnchor),
-            refreshGlass.bottomAnchor.constraint(equalTo: refreshButton.bottomAnchor),
-            refreshGlass.leadingAnchor.constraint(equalTo: refreshButton.leadingAnchor),
-            refreshGlass.trailingAnchor.constraint(equalTo: refreshButton.trailingAnchor),
-
-            refreshIcon.centerXAnchor.constraint(equalTo: refreshGlass.contentView.centerXAnchor),
-            refreshIcon.centerYAnchor.constraint(equalTo: refreshGlass.contentView.centerYAnchor),
+            addressCapsule.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            // Below the safe area, not inside it.
+            //
+            // A site's own bottom bar sits at the bottom of the viewport, which
+            // is the same strip the safe area occupies — so a capsule inside
+            // the safe area lands on top of it. Dropping into the home-indicator
+            // band puts ours under theirs without touching their layout, which
+            // is the trade: the page keeps its full viewport, and the capsule
+            // gives up the margin instead.
+            addressCapsule.bottomAnchor.constraint(
+                equalTo: view.bottomAnchor, constant: -16),
         ])
+        addressCapsule.isHidden = true      // only meaningful once a page is loaded
 
-        refreshButton.isHidden = true          // only meaningful once a page is loaded
-
-        refreshHitButton.translatesAutoresizingMaskIntoConstraints = false
-        refreshHitButton.backgroundColor = .clear
-        // Tap reloads, press opens the menu.
-        //
-        // Both are UIKit's own: `UIControl.h` says a menu enables the control's
-        // context-menu interaction, presented "on touch-down" when it is the
-        // primary action and on a long press otherwise. Leaving
-        // `showsMenuAsPrimaryAction` off is therefore what puts the menu on the
-        // press — and it frees the tap, which the menu would otherwise consume.
-        // This is the only split of the two that UIKit supports; the reverse
-        // cannot work, because whichever gesture the menu takes is gone.
-        refreshHitButton.showsMenuAsPrimaryAction = false
-        refreshHitButton.addAction(UIAction { [weak self] _ in
+        addressCapsule.onTap = { [weak self] in
             guard let self else { return }
             tapFeedback.impactOccurred()
-            spinRefreshIcon()
-            webView.reload()
-        }, for: .primaryActionTriggered)
-        // The menu opening gets its own, heavier tick — the press has no other
-        // confirmation until the menu actually appears.
-        refreshHitButton.addAction(UIAction { [weak self] _ in
-            self?.menuFeedback.impactOccurred()
-        }, for: .menuActionTriggered)
-        // Rebuilt every time it opens: the menu shows the current gesture mode
-        // and disables what the current page can't do, so a menu captured once
+            // Whichever of the two jobs the setting has left on the tap.
+            if Settings.swipeOpensStartBox {
+                // Bound to reload — and while a page is loading, to stopping it,
+                // which is the only stop control the capsule has room for.
+                if webView.isLoading { webView.stopLoading() } else { webView.reload() }
+            } else {
+                revealHome(editingCurrentURL: true)
+            }
+        }
+        // Rebuilt every time it opens: the menu reflects the current settings
+        // and disables what the current page can't do, so one captured once
         // would go stale the first time either changed.
-        refreshHitButton.menu = UIMenu(children: [
+        addressCapsule.menu = UIMenu(children: [
             UIDeferredMenuElement.uncached { [weak self] completion in
                 completion(self?.pageMenu().children ?? [])
             }
         ])
-        refreshButton.addSubview(refreshHitButton)
-        NSLayoutConstraint.activate([
-            refreshHitButton.topAnchor.constraint(equalTo: refreshButton.topAnchor),
-            refreshHitButton.bottomAnchor.constraint(equalTo: refreshButton.bottomAnchor),
-            refreshHitButton.leadingAnchor.constraint(equalTo: refreshButton.leadingAnchor),
-            refreshHitButton.trailingAnchor.constraint(equalTo: refreshButton.trailingAnchor),
-        ])
+        addressCapsule.onSwitchTab = { [weak self] step in
+            self?.switchTab(by: step)
+        }
+    }
 
+    /// Enforce the Zoom setting on the scroll view itself.
+    ///
+    /// The viewport meta is the polite half and is not enough on its own: a
+    /// page can rewrite its own viewport at any moment, and WebKit re-reads the
+    /// zoom limits on every navigation — so a recogniser disabled once at
+    /// install is enabled again by the next page load. That is why pinch kept
+    /// working with the switch off.
+    ///
+    /// Re-applied on every commit for exactly that reason.
+    private func applyZoomPolicy() {
+        guard webView != nil else { return }
+        let allowed = Settings.allowZoom
+        let scrollView = webView.scrollView
+        scrollView.pinchGestureRecognizer?.isEnabled = allowed
+        scrollView.bouncesZoom = allowed
+
+        guard !allowed else {
+            // Back to whatever the page asks for.
+            scrollView.minimumZoomScale = 0.25
+            scrollView.maximumZoomScale = 10
+            return
+        }
+        // The clamp, because neither of the two polite mechanisms holds.
+        //
+        // `user-scalable=no` is advisory — WebKit re-derives the scale limits
+        // from the viewport on every layout, and a page that rewrites its own
+        // viewport wins the race. Disabling the pinch recogniser is undone the
+        // same way. Pinning the scroll view's own limits is the one statement
+        // of the rule the page has no say in.
+        scrollView.minimumZoomScale = 1
+        scrollView.maximumZoomScale = 1
+        if scrollView.zoomScale != 1 { scrollView.setZoomScale(1, animated: false) }
+    }
+
+    /// The insets UIKit is no longer applying.
+    ///
+    /// Top holds the page clear of the status bar and Dynamic Island at rest,
+    /// while leaving it free to scroll underneath. Bottom keeps the last of the
+    /// page reachable above the home indicator and the capsule sitting there.
+    private func updateContentInsets() {
+        guard webView != nil else { return }
+        let top = view.safeAreaInsets.top
+        let bottom = max(view.safeAreaInsets.bottom, AddressCapsule.height)
+        let insets = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
+        webView.scrollView.contentInset = insets
+        webView.scrollView.verticalScrollIndicatorInsets = insets
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        updateContentInsets()
+    }
+
+    /// Scrolling down hides the capsule; scrolling up, or reaching the top,
+    /// brings it back.
+    ///
+    /// The direction is not arbitrary — it is what Safari, Chrome and Firefox
+    /// all do. Scrolling down means reading forward and wanting the content;
+    /// scrolling up is already the gesture people associate with reaching for
+    /// browser chrome.
+    ///
+    /// Deliberately *not* "reappears when scrolling stops". Pausing mid-page is
+    /// ordinary reading, and a capsule sliding back over the text every time
+    /// someone stops to read a paragraph is exactly the interruption this app
+    /// exists to avoid.
+    ///
+    /// The cost, stated plainly: while hidden, the origin is not visible. That
+    /// is acceptable — someone mid-scroll is reading, not deciding whether to
+    /// trust who they are talking to — and one upward scroll brings it back.
+    private func scrolled(_ scrollView: UIScrollView) {
+        guard !addressCapsule.isHidden else { return }
+        let y = scrollView.contentOffset.y
+        defer { lastScrollY = y }
+
+        // At the top, always shown, whatever the last direction was.
+        if y <= -scrollView.adjustedContentInset.top + 1 {
+            addressCapsule.setConcealed(false)
+            setTopBarConcealed(false)
+            return
+        }
+        // Rubber-banding past the bottom reverses the offset without the reader
+        // having changed direction, so it is not a signal.
+        guard y < scrollView.contentSize.height - scrollView.bounds.height else { return }
+
+        // A threshold, so a thumb resting on a page doesn't flicker it in and out.
+        let moved = y - lastScrollY
+        guard abs(moved) > 6 else { return }
+        addressCapsule.setConcealed(moved > 0)
+        // The strip over the notch goes with it, so reading is genuinely
+        // full-screen rather than full-screen-below-a-band.
+        setTopBarConcealed(moved > 0)
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        // Ring sits just outside the circular glass edge, starting at 12 o'clock.
-        let b = refreshButton.bounds
-        progressRing.frame = b
-        progressRing.path = UIBezierPath(
-            arcCenter: CGPoint(x: b.midX, y: b.midY),
-            radius: b.width / 2 + progressRing.lineWidth,
-            startAngle: -.pi / 2, endAngle: 1.5 * .pi, clockwise: true).cgPath
-        if refreshButton.layer.shadowOpacity > 0 {
-            refreshButton.layer.shadowPath = UIBezierPath(ovalIn: b).cgPath
-        }
     }
+
 
     // MARK: - Long-press build-up
-
-    /// Acknowledge a reload.
-    ///
-    /// A pulse rather than the spin this used to do: three dots turning through
-    /// a full circle reads as a control that has broken, not as a page
-    /// reloading. The reload itself is shown by the progress ring around the
-    /// button, which is where it belonged all along.
-    private func spinRefreshIcon() {
-        UIView.animate(withDuration: 0.14, animations: {
-            self.refreshIcon.transform = Self.iconRotation.scaledBy(x: 0.78, y: 0.78)
-            self.refreshIcon.alpha = 0.5
-        }, completion: { _ in
-            UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.55,
-                           initialSpringVelocity: 0.6, options: []) {
-                self.refreshIcon.transform = Self.iconRotation
-                self.refreshIcon.alpha = 1
-            }
-        })
-    }
 
     // MARK: - Page menu
 
@@ -764,21 +919,18 @@ final class BrowserViewController: UIViewController {
     private func pageMenu() -> UIMenu {
         let hasPage = hasLoadedPage && webView.url?.isWebPage == true
 
-        // The gesture's behaviour, at the top, as a submenu showing its state.
-        let current = Settings.swipeDownAction
-        // No image of its own: a submenu already carries the system's chevron,
-        // which turns as it opens. A second, static one beside it read as an
-        // arrow that was supposed to do something and didn't.
-        let gesture = UIMenu(
-            title: "Swipe Down Gesture",
-            subtitle: current.name,
-            children: SwipeDownAction.allCases.map { action in
-                UIAction(title: action.name,
-                         state: action == current ? .on : .off) { [weak self] _ in
-                    Settings.swipeDownAction = action
-                    self?.configureSwipeDownBehaviour()
-                }
-            })
+        // What the swipe does, at the top, as a switch showing its state. The
+        // subtitle names what the *other* surface gets, because the setting
+        // moves two bindings and its title can only name one.
+        let opensHome = Settings.swipeOpensStartBox
+        let gesture = UIAction(
+            title: "Open Home by Swiping Down",
+            subtitle: opensHome ? "The capsule reloads" : "The capsule opens Home",
+            state: opensHome ? .on : .off
+        ) { [weak self] _ in
+            Settings.swipeOpensStartBox = !opensHome
+            self?.configureSwipeDownBehaviour()
+        }
 
         let desktop = UIAction(
             title: "Desktop Site",
@@ -885,7 +1037,6 @@ final class BrowserViewController: UIViewController {
         // thing nor the other.
         WebViewFactory.installUserScripts(into: webView.configuration.userContentController,
                                           scriptlet: currentScriptlet)
-        spinRefreshIcon()
         // From origin: the mobile page is in the cache and a plain reload would
         // hand it straight back.
         webView.reloadFromOrigin()
@@ -901,8 +1052,8 @@ final class BrowserViewController: UIViewController {
         guard let url = webView.url, url.isWebPage else { return }
         let share = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         // Required on iPad, harmless on iPhone.
-        share.popoverPresentationController?.sourceView = refreshButton
-        share.popoverPresentationController?.sourceRect = refreshButton.bounds
+        share.popoverPresentationController?.sourceView = addressCapsule
+        share.popoverPresentationController?.sourceRect = addressCapsule.bounds
         present(share, animated: true)
     }
 
@@ -1141,7 +1292,7 @@ final class BrowserViewController: UIViewController {
         plate.contentView.addSubview(label)
 
         view.addSubview(plate)
-        view.bringSubviewToFront(refreshButton)
+        view.bringSubviewToFront(addressCapsule)
         NSLayoutConstraint.activate([
             plate.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             plate.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor,
@@ -1252,7 +1403,16 @@ final class BrowserViewController: UIViewController {
             let licences = LicencesViewController()
             present(UINavigationController(rootViewController: licences), animated: true)
         }
+        swipeBindingObserver = NotificationCenter.default.addObserver(
+            forName: .swipeBindingChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.configureSwipeDownBehaviour()
+        }
         homeOverlay.onDismissed = { [weak self] in
+            // Whatever closed the box, the next opening decides afresh whether
+            // it is an edit — a stale flag would send an unrelated address into
+            // this tab.
+            self?.editingCurrentTab = false
             guard let self, reloadWhenOverlayCloses else { return }
             reloadWhenOverlayCloses = false
             guard hasLoadedPage, webView.url != nil else { return }
@@ -1362,7 +1522,7 @@ final class BrowserViewController: UIViewController {
         }
         // The box is still up, so the refresh button stays out of the way until
         // it is dismissed.
-        refreshButton.isHidden = true
+        addressCapsule.isHidden = true
     }
 
     /// Replace the web view with one built for the current profile, keeping the
@@ -1374,6 +1534,8 @@ final class BrowserViewController: UIViewController {
         progressObservation = nil
         themeColorObs = nil
         underPageObs = nil
+        scrollObs = nil
+        zoomObs = nil
         urlObservation = nil
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
@@ -1384,7 +1546,7 @@ final class BrowserViewController: UIViewController {
         // The web view is added on top of everything; put the chrome back in
         // front of it.
         view.bringSubviewToFront(topBar)
-        view.bringSubviewToFront(refreshButton)
+        view.bringSubviewToFront(addressCapsule)
         view.bringSubviewToFront(homeOverlay)
         // The reveal gesture was attached to the web view that just went away.
         setupGestures()
@@ -1554,9 +1716,8 @@ final class BrowserViewController: UIViewController {
     /// change your mind. `UIRefreshControl` on the web view's own scroll view
     /// is the real thing, and it is what every other browser puts there.
     private func configureSwipeDownBehaviour() {
-        let wantsReload = Settings.swipeDownAction == .reloadPage
+        let wantsReload = !Settings.swipeOpensStartBox
         revealPan?.isEnabled = !wantsReload
-        updateRefreshButtonAction()
 
         guard wantsReload else {
             pullToRefresh?.endRefreshing()
@@ -1572,29 +1733,11 @@ final class BrowserViewController: UIViewController {
         pullToRefresh = control
     }
 
-    /// What a tap on the refresh button does, which follows from what the drag
-    /// does.
-    ///
-    /// With the drag set to reload, the button's old job is taken — so a tap
-    /// opens the menu, and reloading stays where the user just put it. With the
-    /// drag revealing the start box, the button is the only way to reload, so a
-    /// tap reloads and the menu moves to a long press. Either way both actions
-    /// are one gesture away, and neither is behind the same gesture twice.
-    private func updateRefreshButtonAction() {
-        // Nothing to switch: the menu is the tap in both swipe modes, and the
-        // press reloads. Both are driven from the button's own touches — see
-        // `setupRefreshButton` — so the flag UIKit would use stays off. Setting
-        // it here is what broke the press: it made UIKit open the menu on touch
-        // down and cancel the touch the hold was being timed from.
-    }
-
     @objc private func pullToRefreshFired() {
         // Committed at this point, so it gets the same acknowledgement a
-        // deliberate reload gets: a tick you can feel and the button spinning,
-        // on top of the control's own spinner.
+        // deliberate reload gets: a tick you can feel, on top of the control's
+        // own spinner.
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        refreshButton.isHidden = !hasLoadedPage
-        spinRefreshIcon()
         webView.reload()
     }
 
@@ -1609,20 +1752,45 @@ final class BrowserViewController: UIViewController {
     // MARK: - Home overlay
 
     private func showHome(animated: Bool) {
-        refreshButton.isHidden = true
+        addressCapsule.isHidden = true
         homeOverlay.setTabs(tabs, current: currentTabID)
         homeOverlay.present(over: hasLoadedPage, animated: animated)
     }
 
-    @objc private func revealHome() {
-        refreshButton.isHidden = true
+    @objc private func revealHome() { revealHome(editingCurrentURL: false) }
+
+    /// - Parameter editingCurrentURL: whether this is an edit of the address
+    ///   you are on, rather than the start of something new.
+    ///
+    ///   The distinction belongs to the box, not to the gesture that opened it:
+    ///   an edit carries the current URL and commits **in the same tab**, while
+    ///   everything else commits into a new one. Without it, opening the box
+    ///   from the capsule would silently turn every address correction into a
+    ///   new tab — which is what the box does today for every commit.
+    private func revealHome(editingCurrentURL: Bool) {
+        addressCapsule.isHidden = true
+        setNeedsUpdateOfHomeIndicatorAutoHidden()
+        editingCurrentTab = editingCurrentURL
         // Snapshot the page we're leaving so its grid card shows a live preview.
         captureSnapshot { [weak self] in
             guard let self else { return }
             self.homeOverlay.setTabs(self.tabs, current: self.currentTabID)
         }
         homeOverlay.setTabs(tabs, current: currentTabID)
-        homeOverlay.present(over: hasLoadedPage, animated: true)
+        homeOverlay.present(over: hasLoadedPage, animated: true,
+                            editing: editingCurrentURL ? webView.url : nil)
+    }
+
+    /// Move to the tab either side of this one. Inert with one tab open.
+    private func switchTab(by step: Int) {
+        guard tabs.count > 1,
+              let current = currentTabID,
+              let index = tabs.firstIndex(where: { $0.id == current }) else { return }
+        // Wraps: with a handful of tabs, running off the end and stopping dead
+        // is more surprising than coming round.
+        let next = (index + step + tabs.count) % tabs.count
+        UISelectionFeedbackGenerator().selectionChanged()
+        switchToTab(tabs[next].id)
     }
 
     /// Capture a downscaled snapshot of the visible page into the current tab.
@@ -1684,10 +1852,13 @@ final class BrowserViewController: UIViewController {
     private func hideHome() {
         guard hasLoadedPage else { return }   // nothing behind to reveal yet
         homeOverlay.dismiss(animated: true)
-        // Dismissing the start box puts a live page back on screen, so the
-        // refresh button belongs there again. Without this it stayed hidden
-        // until the next tab load.
-        refreshButton.isHidden = false
+        // Nothing is navigating, so nothing will commit — the capsule has to be
+        // put back explicitly or it stays hidden over a live page.
+        addressCapsule.show(url: webView.url)
+        // The strip travels with the capsule, so it has to be put back with it.
+        setTopBarConcealed(false, animated: false)
+        setNeedsUpdateOfHomeIndicatorAutoHidden()
+        applyZoomPolicy()
     }
 
     // MARK: - Navigation
@@ -1697,6 +1868,19 @@ final class BrowserViewController: UIViewController {
         // Typed URLs and searches are the strongest signal of intent, and rank
         // highest — but WebKit reports them as `.other`, so flag it here.
         nextNavigationIsTyped = true
+
+        // An edit of the address you were already on stays in this tab. Every
+        // other route into the box — the swipe, New Tab, the tab list's + —
+        // opens a new one, which is what the box did unconditionally before.
+        if editingCurrentTab {
+            editingCurrentTab = false
+            hasLoadedPage = true
+            homeOverlay.dismiss(animated: true)
+            // Shown by `didCommit`, once there is an origin to show.
+            tabManager.updateSelectedTab(url: url)
+            webView.load(pageRequest(url))
+            return
+        }
         openTab(url: url)
     }
 
@@ -1712,20 +1896,23 @@ final class BrowserViewController: UIViewController {
         if startsNewChain { profile.history.resetVisitChain() }
         hasLoadedPage = true
         homeOverlay.dismiss(animated: true)
-        refreshButton.isHidden = false
+        // Shown by `didCommit`, once there is an origin to show.
         tabManager.addTab(url: url)      // selection callback loads it
     }
 
     private func switchToTab(_ id: UUID) {
         guard id != currentTabID else {
             homeOverlay.dismiss(animated: true)
-            refreshButton.isHidden = false
+            // Same tab: the box just closes, and no load follows to reveal it.
+            addressCapsule.show(url: webView.url)
+            // The strip travels with the capsule, so it has to be put back with it.
+            setTopBarConcealed(false, animated: false)
             return
         }
         stashSessionState()
         hasLoadedPage = true
         homeOverlay.dismiss(animated: true)
-        refreshButton.isHidden = false
+        // Shown by `didCommit`, once there is an origin to show.
         tabManager.selectTab(id: id)     // selection callback loads it
     }
 
@@ -1733,59 +1920,47 @@ final class BrowserViewController: UIViewController {
         tabManager.removeTab(id: id)     // selection callback loads the neighbour
     }
 
-    /// Drive the ring from the web view's real load progress.
+    /// Drive the capsule's hairline from the web view's real load progress.
     ///
-    /// `strokeEnd` is animated explicitly (implicit CA animations lag behind the
-    /// actual value and make the ring look wrong), and any previous fade is
-    /// removed first — a left-over non-removed fade would pin the layer
-    /// invisible for every subsequent load.
+    /// `estimatedProgress` arrives in lurches rather than smoothly, which a line
+    /// absorbs far better than a fill would — and a fill over glass would mute
+    /// the refraction the material is made of, under the domain text, at the
+    /// moment the user is trying to read it.
+    ///
+    /// A cached load finishes almost instantly, and a capsule this narrow gives
+    /// the line so little travel that the result reads as a glitch rather than
+    /// as progress. So nothing is drawn until a load has been running long
+    /// enough to be worth reporting — Safari suppresses fast loads for the same
+    /// reason.
     private func updateProgress(_ value: Float) {
-        progressRing.removeAnimation(forKey: "fade")
-
+        guard progressDeserved else { return }
         if value < 1.0 {
-            progressRing.opacity = 1
-            CATransaction.begin()
-            CATransaction.setAnimationDuration(0.15)
-            progressRing.strokeEnd = CGFloat(max(0.02, value))   // always show a sliver
-            CATransaction.commit()
+            addressCapsule.setProgress(Double(max(0.04, value)), animated: true)
         } else {
-            CATransaction.begin()
-            CATransaction.setAnimationDuration(0.15)
-            progressRing.strokeEnd = 1
-            CATransaction.commit()
-            fadeOutRing(after: 0.15)
-        }
-    }
-
-    /// Fade the ring away and reset it so the next load starts from zero.
-    private func fadeOutRing(after delay: TimeInterval) {
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 1
-        fade.toValue = 0
-        fade.duration = 0.3
-        fade.beginTime = CACurrentMediaTime() + delay
-        fade.fillMode = .forwards
-        fade.isRemovedOnCompletion = true
-        progressRing.add(fade, forKey: "fade")
-        progressRing.opacity = 0
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 0.3) { [weak self] in
-            guard let self, self.progressRing.opacity == 0 else { return }
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            self.progressRing.strokeEnd = 0
-            CATransaction.commit()
+            addressCapsule.finishProgress()
         }
     }
 
     /// Cancel any in-flight progress display (failed or cancelled navigation).
     private func resetProgress() {
-        progressRing.removeAnimation(forKey: "fade")
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        progressRing.opacity = 0
-        progressRing.strokeEnd = 0
-        CATransaction.commit()
+        progressTimer?.invalidate()
+        progressTimer = nil
+        progressDeserved = false
+        addressCapsule.resetProgress()
+    }
+
+    /// Start the clock that decides whether this load gets an indicator at all.
+    private func beginProgress() {
+        progressTimer?.invalidate()
+        progressDeserved = false
+        addressCapsule.resetProgress()
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) {
+            [weak self] _ in
+            guard let self, webView.isLoading else { return }
+            progressDeserved = true
+            addressCapsule.setProgress(Double(max(0.04, webView.estimatedProgress)),
+                                       animated: false)
+        }
     }
 }
 
@@ -1794,9 +1969,7 @@ final class BrowserViewController: UIViewController {
 extension BrowserViewController: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        // Show the ring immediately — estimatedProgress can lag the first bytes.
-        progressRing.removeAnimation(forKey: "fade")
-        progressRing.opacity = 1
+        beginProgress()
         sawServerRedirect = false
         pendingNavigationURL = webView.url
     }
@@ -1812,6 +1985,13 @@ extension BrowserViewController: WKNavigationDelegate {
     /// where a visit belongs: `didFinish` never fires for a load the user
     /// interrupts, and browsers record those visits too.
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        // The address is settled at commit — this is the first moment it is
+        // safe to say which site you are on, and the last moment it changes.
+        addressCapsule.show(url: webView.url)
+        // The strip travels with the capsule, so it has to be put back with it.
+        setTopBarConcealed(false, animated: false)
+        setNeedsUpdateOfHomeIndicatorAutoHidden()
+        applyZoomPolicy()
         guard let url = webView.url else { return }
         // A redirect outranks the original classification: it's how we got here.
         let transition: VisitTransition = sawServerRedirect ? .redirect : pendingTransition
@@ -1999,6 +2179,9 @@ extension BrowserViewController: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        addressCapsule.show(url: webView.url)
+        // The strip travels with the capsule, so it has to be put back with it.
+        setTopBarConcealed(false, animated: false)
         endPullToRefresh()
         contentProcessCrashes = 0   // a clean load means we've recovered
         pendingNavigationURL = nil  // backstop: a commit we somehow missed
@@ -2361,7 +2544,7 @@ extension BrowserViewController: TabManagerDelegate {
         guard let tab else {
             // Last tab closed — nothing to show but the start box.
             hasLoadedPage = false
-            refreshButton.isHidden = true
+            addressCapsule.isHidden = true
             webView.load(URLRequest(url: URL(string: "about:blank")!))
             showHome(animated: true)
             return

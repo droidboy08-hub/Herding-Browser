@@ -139,7 +139,26 @@ enum FilterListSource: String, CaseIterable {
     /// The CNAME list is the happy case for conversion: 16,800 bare host rules,
     /// no exceptions and almost no options, so nothing is lost on the way to
     /// declarative form.
-    var usedDeclaratively: Bool { self == .easylist || self == .cnameTrackers }
+    var usedDeclaratively: Bool {
+        switch self {
+        // Every list of *network* rules belongs here, not just EasyList.
+        //
+        // The runtime engine wraps `fetch` and `XMLHttpRequest` and nothing
+        // else, so a rule that only reaches it cannot stop a `<script>` or an
+        // `<iframe>` the page appends to the DOM — which is how ad networks
+        // have loaded for years. Leaving these out meant most of the blocking
+        // this app ships silently did not apply to the most common way an ad
+        // arrives.
+        case .easylist, .cnameTrackers, .supplementalAds, .mobileSpecific,
+             .appExtras, .firstPartyTrackers:
+            return true
+        // Cosmetic and exception lists stay runtime-only. Converting those
+        // produces `css-display-none` entries WebKit applies everywhere, which
+        // is the wrong shape for rules written per-site.
+        case .easyprivacy, .cookieNotices, .siteFixes:
+            return false
+        }
+    }
 
     /// Whether the runtime engine loads this list too.
     ///

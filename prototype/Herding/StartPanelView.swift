@@ -683,6 +683,13 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 .toggle("Always show panel",
                         get: { Settings.startBoxShowsPanel },
                         set: { Settings.startBoxShowsPanel = $0 }),
+                .toggle("Open Home by swiping down",
+                        get: { Settings.swipeOpensStartBox },
+                        set: { on in
+                            Settings.swipeOpensStartBox = on
+                            NotificationCenter.default.post(name: .swipeBindingChanged,
+                                                            object: nil)
+                        }),
                 .slider("Swipe sensitivity",
                         get: { Settings.revealSwipeSensitivity },
                         set: { Settings.revealSwipeSensitivity = $0 }),
@@ -690,8 +697,12 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 .action("App Icon"),
                 .action("Wallpaper"),
             ], footer: "Favourites: tap + to keep the page you're on, hold to "
-                     + "remove.\n\nSwipe sensitivity sets how far you drag "
-                     + "down a page to open Home."),
+                     + "remove.\n\nOpening Home by swiping down moves reload "
+                     + "to the address capsule — tap it to reload, or to stop a "
+                     + "page that is still loading. Off, the swipe is "
+                     + "pull-to-refresh and the capsule opens Home. Either way "
+                     + "you have both.\n\nSwipe sensitivity sets how far you "
+                     + "drag down a page to open Home."),
             SettingsSection(title: "Media", rows: [
                 // One switch for both halves: claiming the audio session and
                 // telling the page it is still visible only work together, and
