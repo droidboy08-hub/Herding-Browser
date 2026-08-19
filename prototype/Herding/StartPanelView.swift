@@ -32,6 +32,7 @@ final class StartPanelView: UIView {
     var onOpenDownload: ((DownloadItem) -> Void)?
     var onShowDownloads: (() -> Void)?
     /// Both need a view controller to present from, which a view isn't.
+    var onShowSafeguards: (() -> Void)?
     var onShowContentFiltering: (() -> Void)?
     var onShowMediaSettings: (() -> Void)?
     var onShowAppearance: (() -> Void)?
@@ -635,35 +636,11 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
             // them meant scrolling past one to reach the other.
             SettingsSection(title: "Privacy", rows: [
                 .blockingLevelPicker,
-                .toggle("Block fingerprinting",
-                        get: { Settings.blockFingerprinting },
-                        set: { on in
-                            Settings.blockFingerprinting = on
-                            NotificationCenter.default.post(name: .contentBlockingChanged,
-                                                            object: nil)
-                        }),
-                .toggle("Block JavaScript",
-                        get: { Settings.blockJavaScript },
-                        set: { on in
-                            Settings.blockJavaScript = on
-                            NotificationCenter.default.post(name: .contentBlockingChanged,
-                                                            object: nil)
-                        }),
-                .toggle("Hide cookie notices",
-                        get: { Settings.blockCookieNotices },
-                        set: { on in
-                            Settings.blockCookieNotices = on
-                            NotificationCenter.default.post(name: .contentBlockingChanged,
-                                                            object: nil)
-                        }),
-                .toggle("Block pop-ups and redirects",
-                        get: { Settings.blockRedirectPages },
-                        set: { Settings.blockRedirectPages = $0 }),
-                .toggle("HTTPS-Only Mode",
-                        get: { Settings.httpsOnly },
-                        set: { Settings.httpsOnly = $0 }),
-                .action("Content Filtering"),
-                .action("Passwords"),
+                // The individual defences live behind this rather than on the
+                // card. Ten rows was most of a small card spent on switches
+                // almost nobody moves twice; what stays is why people open
+                // Privacy at all — how much to block, and how to forget.
+                .action("Safeguards"),
                 // These two had handlers written for them and no row to reach
                 // them from — a browser that can't be told to forget anything
                 // is not one you can hand to somebody else for a minute.
@@ -1105,6 +1082,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 switch title {
                 case "Downloads":       onShowDownloads?()
                 case "Buttons":         onShowStartBoxButtons?()
+                case "Safeguards":       onShowSafeguards?()
                 case "Content Filtering": onShowContentFiltering?()
                 case "Wallpaper":       onShowAppearance?()
                 case "App Icon":        onShowAppIcon?()

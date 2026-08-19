@@ -10,12 +10,28 @@ final class StartBoxButtonsViewController: UIViewController {
 
     private let table = UITableView(frame: .zero, style: .insetGrouped)
 
-    private var chosen: [StartBoxButton] = Settings.startBoxButtons
+    /// Always ends with Settings, whatever was stored.
+    ///
+    /// Settings is pinned to the last place in the row and cannot be dragged
+    /// out of it. It is the way into every other preference, including this
+    /// screen — a row it could be removed from is a row that can lock you out
+    /// of the only place that puts it back.
+    private var chosen: [StartBoxButton] = {
+        var stored = Settings.startBoxButtons.filter { $0 != .settings }
+        stored.append(.settings)
+        return stored
+    }()
     /// Everything else. Stored rather than derived, so that each list is a plain
     /// array the table's own move maps onto exactly — a list computed from the
     /// other one can reorder itself under a drag that is still in flight.
+    ///
+    /// Settings is never in here; it has nowhere else to be.
     private var rest: [StartBoxButton] = StartBoxButton.allCases
-        .filter { !Settings.startBoxButtons.contains($0) }
+        .filter { $0 != .settings && !Settings.startBoxButtons.contains($0) }
+
+    /// Where Settings sits — the end of the row, and the one slot nothing else
+    /// may be dropped into.
+    private var pinnedIndex: Int { chosen.count - 1 }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -66,9 +82,9 @@ extension StartBoxButtonsViewController: UITableViewDataSource, UITableViewDeleg
         guard section == 1 else { return nil }
         return "Drag to reorder, or between the lists. "
              + "\(Settings.startBoxButtonCapacity) fit across the top of the box, "
-             + "so a fifth pushes the last one out.\n\n"
-             + "Settings stays reachable without its button: hold the refresh "
-             + "circle on a page and it is in the menu."
+             + "so one too many pushes the last one out.\n\n"
+             + "Settings keeps the last place and cannot be moved — it is the "
+             + "way back to this screen."
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -87,7 +103,9 @@ extension StartBoxButtonsViewController: UITableViewDataSource, UITableViewDeleg
 
     // MARK: - Reordering
 
-    func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool { true }
+    func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool {
+        button(at: indexPath) != .settings
+    }
 
     func tableView(_ tableView: UITableView,
                    editingStyleForRowAt indexPath: IndexPath) -> UITableViewCell.EditingStyle {
@@ -103,14 +121,21 @@ extension StartBoxButtonsViewController: UITableViewDataSource, UITableViewDeleg
         if source.section == 0, proposed.section == 1, chosen.count == 1 { return source }
 
         let last: Int
-        if proposed.section == source.section {
-            // Within a list the dragged row still occupies a slot of its own.
-            last = (proposed.section == 0 ? chosen.count : rest.count) - 1
-        } else if proposed.section == 0 {
-            // Into a full row, the last place is the *second* to last: dropping
-            // past the end would make the newcomer the one pushed straight back
-            // out again, which reads as the drag having done nothing.
-            last = min(chosen.count, Settings.startBoxButtonCapacity - 1)
+        if proposed.section == 0 {
+            // Never past Settings. It holds the end of the row, so the furthest
+            // anything else can land is the slot in front of it.
+            if proposed.section == source.section {
+                // Within the row the dragged button still occupies a slot of
+                // its own, so its own index is available to it.
+                last = pinnedIndex - 1
+            } else {
+                // Arriving from the other list, the row grows by one — but the
+                // newcomer still has to come to rest before Settings, and
+                // before the slot that would push it straight back out.
+                last = min(pinnedIndex, Settings.startBoxButtonCapacity - 2)
+            }
+        } else if proposed.section == source.section {
+            last = rest.count - 1
         } else {
             last = rest.count
         }
@@ -134,10 +159,13 @@ extension StartBoxButtonsViewController: UITableViewDataSource, UITableViewDeleg
         // second move, so it is handed over as its own update rather than as a
         // reload; a reload here throws away the cell the drag is still
         // animating and leaves it stranded above the list.
+        // A button too many: the one at the end leaves — but the end is
+        // Settings, which never does, so it is the last one in front of it.
         var pushedOut: IndexPath?
         if chosen.count > Settings.startBoxButtonCapacity {
-            rest.insert(chosen.removeLast(), at: 0)
-            pushedOut = IndexPath(row: Settings.startBoxButtonCapacity, section: 0)
+            let evicted = pinnedIndex - 1
+            rest.insert(chosen.remove(at: evicted), at: 0)
+            pushedOut = IndexPath(row: evicted, section: 0)
         }
         Settings.startBoxButtons = chosen
 

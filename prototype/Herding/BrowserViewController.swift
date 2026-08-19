@@ -684,7 +684,7 @@ final class BrowserViewController: UIViewController {
             // is the trade: the page keeps its full viewport, and the capsule
             // gives up the margin instead.
             addressCapsule.bottomAnchor.constraint(
-                equalTo: view.bottomAnchor, constant: -16),
+                equalTo: view.bottomAnchor, constant: -18),
         ])
         addressCapsule.isHidden = true      // only meaningful once a page is loaded
 
@@ -1302,6 +1302,23 @@ final class BrowserViewController: UIViewController {
             present(UINavigationController(rootViewController: media), animated: true)
         }
         homeOverlay.panel.onShowPasswords = { [weak self] in self?.presentPasswordsInfo() }
+        homeOverlay.panel.onShowSafeguards = { [weak self] in
+            guard let self else { return }
+            let safeguards = SafeguardsViewController()
+            // Both of these present over the Safeguards screen, which is
+            // itself presented — so they are handed back to the browser rather
+            // than opened from in there.
+            safeguards.onShowContentFiltering = { [weak self] in
+                self?.presentedViewController?.dismiss(animated: true) {
+                    self?.presentContentFiltering()
+                }
+            }
+            safeguards.onShowPasswords = { [weak self, weak safeguards] in
+                guard let self, let safeguards else { return }
+                safeguards.present(passwordsInfoAlert(), animated: true)
+            }
+            present(UINavigationController(rootViewController: safeguards), animated: true)
+        }
         homeOverlay.panel.onShowLicences = { [weak self] in
             guard let self else { return }
             let licences = LicencesViewController()
@@ -1475,7 +1492,9 @@ final class BrowserViewController: UIViewController {
     /// password manager the user chose, with the approval prompt shown by that
     /// app rather than by us. So this explains where they live instead of
     /// offering a second, worse place to keep them.
-    private func presentPasswordsInfo() {
+    /// Built rather than presented, because Safeguards has to show this over
+    /// itself — it is presented, so the browser cannot present over it.
+    private func passwordsInfoAlert() -> UIAlertController {
         let alert = UIAlertController(
             title: "Passwords",
             message: "Saved passwords come from iOS — iCloud Keychain, or whichever "
@@ -1484,7 +1503,11 @@ final class BrowserViewController: UIViewController {
                    + "Manage them in Settings › General › AutoFill & Passwords.",
             preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
+        return alert
+    }
+
+    private func presentPasswordsInfo() {
+        present(passwordsInfoAlert(), animated: true)
     }
 
     /// Backstop for same-document navigation: any URL change we didn't already
