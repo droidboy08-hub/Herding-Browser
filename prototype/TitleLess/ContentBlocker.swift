@@ -407,7 +407,7 @@ actor ContentBlocker {
 extension Notification.Name {
     /// The blocking level changed. `BrowserViewController` re-applies the rule
     /// lists when this fires.
-    static let contentBlockingChanged = Notification.Name("Herding.contentBlockingChanged")
+    static let contentBlockingChanged = Notification.Name("TitleLess.contentBlockingChanged")
 }
 
 // MARK: - Applying to a web view

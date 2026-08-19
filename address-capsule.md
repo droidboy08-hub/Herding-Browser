@@ -1,6 +1,6 @@
 # Address Capsule — Specification
 
-Status: **built.** Implemented in `prototype/Herding/AddressCapsule.swift` and
+Status: **built.** Implemented in `prototype/TitleLess/AddressCapsule.swift` and
 wired up in `BrowserViewController`. Both open questions below were decided in
 the course of building it; their answers are recorded there.
 
@@ -189,7 +189,7 @@ rather than a change to how it commits.
 - **Replaces `refreshButton`** entirely — its glass, shadow, long-press menu and
   `hasLoadedPage` show/hide logic are the starting point, not the ring.
 - **`Settings.startPage == .startBox`** currently hides the refresh button
-  ([BrowserViewController.swift:414](prototype/Herding/BrowserViewController.swift:414)).
+  ([BrowserViewController.swift:414](prototype/TitleLess/BrowserViewController.swift:414)).
   The same question applies to the capsule and has not been decided.
 - **The support page and App Store description** both describe reload as "the
   round button in the bottom corner", and the support page teaches the

@@ -11,7 +11,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		A1000001000000000000200 /* Herding.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Herding.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1000001000000000000200 /* TitleLess.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TitleLess.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1000001000000000000201 /* AdblockFFI.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = AdblockFFI.xcframework; path = Frameworks/AdblockFFI.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -21,12 +21,12 @@
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = A1000001000000000000050 /* Herding */;
+			target = A1000001000000000000050 /* TitleLess */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A1000001000000000000001 /* Herding */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (2D1FFBC43019939E00A2924D /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Herding; sourceTree = "<group>"; };
+		A1000001000000000000001 /* TitleLess */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (2D1FFBC43019939E00A2924D /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = TitleLess; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -44,7 +44,7 @@
 		A1000001000000000000020 = {
 			isa = PBXGroup;
 			children = (
-				A1000001000000000000001 /* Herding */,
+				A1000001000000000000001 /* TitleLess */,
 				A1000001000000000000203 /* Frameworks */,
 				A1000001000000000000030 /* Products */,
 			);
@@ -53,7 +53,7 @@
 		A1000001000000000000030 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A1000001000000000000200 /* Herding.app */,
+				A1000001000000000000200 /* TitleLess.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -69,9 +69,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A1000001000000000000050 /* Herding */ = {
+		A1000001000000000000050 /* TitleLess */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A1000001000000000000060 /* Build configuration list for PBXNativeTarget "Herding" */;
+			buildConfigurationList = A1000001000000000000060 /* Build configuration list for PBXNativeTarget "TitleLess" */;
 			buildPhases = (
 				A1000001000000000000070 /* Sources */,
 				A1000001000000000000010 /* Frameworks */,
@@ -82,11 +82,11 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				A1000001000000000000001 /* Herding */,
+				A1000001000000000000001 /* TitleLess */,
 			);
-			name = Herding;
-			productName = Herding;
-			productReference = A1000001000000000000200 /* Herding.app */;
+			name = TitleLess;
+			productName = TitleLess;
+			productReference = A1000001000000000000200 /* TitleLess.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -104,7 +104,7 @@
 					};
 				};
 			};
-			buildConfigurationList = A1000001000000000000100 /* Build configuration list for PBXProject "Herding" */;
+			buildConfigurationList = A1000001000000000000100 /* Build configuration list for PBXProject "TitleLess" */;
 			compatibilityVersion = "Xcode 15.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -118,7 +118,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A1000001000000000000050 /* Herding */,
+				A1000001000000000000050 /* TitleLess */,
 			);
 		};
 /* End PBXProject section */
@@ -273,9 +273,10 @@
 					"$(PROJECT_DIR)/Frameworks",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Herding/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Herding;
+				INFOPLIST_FILE = TitleLess/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TitleLess;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -319,9 +320,10 @@
 					"$(PROJECT_DIR)/Frameworks",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Herding/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Herding;
+				INFOPLIST_FILE = TitleLess/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TitleLess;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -352,7 +354,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A1000001000000000000060 /* Build configuration list for PBXNativeTarget "Herding" */ = {
+		A1000001000000000000060 /* Build configuration list for PBXNativeTarget "TitleLess" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A1000001000000000000130 /* Debug */,
@@ -361,7 +363,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A1000001000000000000100 /* Build configuration list for PBXProject "Herding" */ = {
+		A1000001000000000000100 /* Build configuration list for PBXProject "TitleLess" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A1000001000000000000110 /* Debug */,

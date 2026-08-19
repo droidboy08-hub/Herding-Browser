@@ -374,13 +374,13 @@ enum Settings {
 
 extension Notification.Name {
     /// The interface style or the wallpaper changed.
-    static let appearanceChanged = Notification.Name("Herding.appearanceChanged")
+    static let appearanceChanged = Notification.Name("TitleLess.appearanceChanged")
     /// The swipe-down binding moved, so the gesture and the capsule swap jobs.
-    static let swipeBindingChanged = Notification.Name("Herding.swipeBindingChanged")
+    static let swipeBindingChanged = Notification.Name("TitleLess.swipeBindingChanged")
     /// Something changed that alters which scripts are injected into a page.
     /// The listener rebuilds the script set and reloads, because a viewport is
     /// applied while the document is loading and can't be revised afterwards.
-    static let pageScriptsChanged = Notification.Name("Herding.pageScriptsChanged")
+    static let pageScriptsChanged = Notification.Name("TitleLess.pageScriptsChanged")
 }
 
 /// A button that can sit in the start box's top row.

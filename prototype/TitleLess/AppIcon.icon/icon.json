@@ -71,8 +71,8 @@
             }
           ],
           "hidden" : true,
-          "image-name" : "Herding1.png",
-          "name" : "Herding1",
+          "image-name" : "TitleLess1.png",
+          "name" : "TitleLess1",
           "position" : {
             "scale" : 0.9,
             "translation-in-points" : [
@@ -127,8 +127,8 @@
               "value" : true
             }
           ],
-          "image-name" : "Herding2.png",
-          "name" : "Herding2",
+          "image-name" : "TitleLess2.png",
+          "name" : "TitleLess2",
           "opacity" : 1,
           "position" : {
             "scale" : 1,
