@@ -608,7 +608,6 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
         case blockingLevelPicker
         case appearanceModePicker
         case toggle(String, get: () -> Bool, set: (Bool) -> Void)
-        case slider(String, get: () -> Float, set: (Float) -> Void)
         case action(String)
         case destructive(String)
         case version
@@ -689,9 +688,6 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                             NotificationCenter.default.post(name: .swipeBindingChanged,
                                                             object: nil)
                         }),
-                .slider("Swipe sensitivity",
-                        get: { Settings.revealSwipeSensitivity },
-                        set: { Settings.revealSwipeSensitivity = $0 }),
                 .appearanceModePicker,
                 .action("App Icon"),
                 .action("Wallpaper"),
@@ -976,19 +972,6 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 cell.accessoryView = toggle
                 cell.selectionStyle = .none
 
-            case .slider(let title, let get, let set):
-                cfg.text = title
-                // Sized here rather than by constraints: an accessory view is
-                // positioned by the cell from its frame, and a slider with no
-                // intrinsic width would collapse.
-                let slider = UISlider(frame: CGRect(x: 0, y: 0, width: 148, height: 28))
-                slider.minimumValue = 0
-                slider.maximumValue = 1
-                slider.value = get()
-                slider.addAction(UIAction { _ in set(slider.value) }, for: .valueChanged)
-                cell.accessoryView = slider
-                cell.selectionStyle = .none
-
             case .action(let title):
                 cfg.text = title
                 if title == "App Icon",
@@ -1141,7 +1124,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                     assertionFailure("Settings row \"\(title)\" has no action")
                 }
             case .searchEnginePicker, .startPagePicker, .blockingLevelPicker,
-                 .appearanceModePicker, .toggle, .slider, .version:
+                 .appearanceModePicker, .toggle, .version:
                 break
             }
         }

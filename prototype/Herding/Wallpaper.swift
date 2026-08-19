@@ -205,7 +205,7 @@ enum WallpaperStore {
 
     /// Which built-in gradient is chosen, when one is.
     static var presetID: String? {
-        get { UserDefaults.standard.string(forKey: "settings.wallpaperPreset") }
+        get { UserDefaults.standard.string(forKey: "settings.wallpaperPreset") ?? "ink" }
         set { UserDefaults.standard.set(newValue, forKey: "settings.wallpaperPreset") }
     }
 
@@ -238,7 +238,7 @@ enum WallpaperStore {
     static var kind: WallpaperKind {
         get {
             UserDefaults.standard.string(forKey: "settings.wallpaperKind")
-                .flatMap(WallpaperKind.init(rawValue:)) ?? .none
+                .flatMap(WallpaperKind.init(rawValue:)) ?? .preset
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: "settings.wallpaperKind")

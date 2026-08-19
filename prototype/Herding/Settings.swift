@@ -58,7 +58,7 @@ enum Settings {
 
     // MARK: Search & General
     static var searchEngine: SearchEngine {
-        get { d.string(forKey: "settings.searchEngine").flatMap(SearchEngine.init(rawValue:)) ?? .duckDuckGo }
+        get { d.string(forKey: "settings.searchEngine").flatMap(SearchEngine.init(rawValue:)) ?? .google }
         set { d.set(newValue.rawValue, forKey: "settings.searchEngine") }
     }
 
@@ -71,23 +71,13 @@ enum Settings {
         }
     }
 
-    /// How readily a downward drag opens the start page, 0 (least) to 1 (most).
+    /// How far down the drag must travel to open Home.
     ///
-    /// Stored as a dial rather than a distance because that is what the slider
-    /// is: turning it up should mean "more sensitive", and a smaller number
-    /// meaning a lighter touch reads backwards everywhere it is used.
-    static var revealSwipeSensitivity: Float {
-        get { d.object(forKey: "settings.revealSwipeSensitivity") == nil
-                ? 0.5 : d.float(forKey: "settings.revealSwipeSensitivity") }
-        set { d.set(min(max(newValue, 0), 1), forKey: "settings.revealSwipeSensitivity") }
-    }
-
-    /// How far down the drag must travel, from the dial above. The range starts
-    /// well clear of a stray finger and stops short of a full screen's drag.
-    static var revealSwipeDistance: CGFloat {
-        let sensitivity = CGFloat(min(max(revealSwipeSensitivity, 0), 1))
-        return 130 - 100 * sensitivity
-    }
+    /// Was a slider, from 130pt at its least sensitive to 30pt at its most.
+    /// This is the middle of that range and the value it shipped at — far
+    /// enough clear of a stray finger to not fire by accident, short enough to
+    /// not feel like work.
+    static let revealSwipeDistance: CGFloat = 80
 
     /// Open the second box together with the start box, rather than waiting for
     /// one of the row's buttons to be tapped.
@@ -136,7 +126,7 @@ enum Settings {
     static var startPage: StartPage {
         get {
             d.string(forKey: "settings.startPage")
-                .flatMap(StartPage.init(rawValue:)) ?? .lastVisited
+                .flatMap(StartPage.init(rawValue:)) ?? .startBox
         }
         set { d.set(newValue.rawValue, forKey: "settings.startPage") }
     }
@@ -255,9 +245,11 @@ enum Settings {
                let mode = AppearanceMode(rawValue: raw) {
                 return mode
             }
-            // The setting used to be a lone "force dark" bool, in which false
-            // meant follow the system. Anyone who had it on wanted dark.
-            return d.bool(forKey: "settings.darkMode") ? .dark : .system
+            // Dark out of the box, and dark for anyone upgrading from the old
+            // "force dark" bool whichever way they had it. The browser is
+            // mostly a frame around somebody else's page, and a dark frame is
+            // the one that disappears around it.
+            return .dark
         }
         set {
             d.set(newValue.rawValue, forKey: appearanceModeKey)
