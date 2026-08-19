@@ -206,12 +206,17 @@ extension URL {
         ]
 
         // Names too short or too generic to strip everywhere, but unambiguous on
-        // the site that issues them. YouTube's `si` is the share token every
-        // copied YouTube link carries; two letters is far too little to act on
-        // anywhere else.
+        // the site that issues them. YouTube mints a fresh `si` for every share
+        // and uses it to tie the sharer to everyone who opens the link; the
+        // video plays identically without it. Two letters is far too little to
+        // act on anywhere else, where `si` may well mean something.
+        //
+        // `pp` is not here on purpose. It rides along on the same shared links,
+        // but it is an opaque player-parameters blob rather than a known
+        // tracker, and this list is only for the ones that are.
         let host = (self.host ?? "").lowercased()
         let hostScoped: Set<String> =
-            host.hasSuffix("youtube.com") || host.hasSuffix("youtu.be") ? ["si", "pp"] : []
+            host.hasSuffix("youtube.com") || host.hasSuffix("youtu.be") ? ["si"] : []
 
         let kept = items.filter { item in
             let name = item.name.lowercased()
