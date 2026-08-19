@@ -657,12 +657,30 @@ final class BrowserViewController: UIViewController {
     }
 
     private func applyTopColor() {
-        let color = webView.themeColor ?? webView.underPageBackgroundColor
+        // Only a real page gets to colour the strip.
+        //
+        // On an internal state — no page yet, a failed restore sitting on
+        // about:blank, an error page — the web view still reports *a* colour,
+        // usually a stale one from the last site or a plain white that reads as
+        // a bright bar in dark mode. Neither belongs to anything the user is
+        // looking at, so those fall back to the app's own chrome colour. This
+        // is the `isInternalPage` rule from the reference: internal → fallback.
+        let onRealPage = hasLoadedPage && webView.url?.isWebPage == true
+        let color = onRealPage
+            ? (webView.themeColor ?? webView.underPageBackgroundColor)
+            : nil
         currentTopColor = color
-        UIView.animate(withDuration: 0.25) {
-            // Plain solid bar in the site color.
-            self.topBar.backgroundColor = color ?? .systemBackground
-        }
+
+        // Set outright, never animated.
+        //
+        // This used to cross-fade over a quarter second, to smooth the sites
+        // that change their theme colour as you scroll. That is a rare thing to
+        // smooth, and the price was paid on every navigation: going back from a
+        // dark page to a light one, you *watched* the strip travel from one to
+        // the other, which is the one moment it should not be drawing attention
+        // to itself. Safari does not animate it either — the change lands
+        // between frames and the eye never catches it.
+        topBar.backgroundColor = color ?? .systemBackground
         setNeedsStatusBarAppearanceUpdate()
     }
 
@@ -2293,6 +2311,74 @@ extension BrowserViewController: WKNavigationDelegate {
 // MARK: - WKUIDelegate (popup / new-window suppression)
 
 extension BrowserViewController: WKUIDelegate {
+
+    /// The menu shown by pressing and holding a link.
+    ///
+    /// Without this WebKit supplies its own, and its own has no idea this app
+    /// has tabs — so the one thing a long press on a link is *for* was missing,
+    /// and the way out of the page it offered was Safari. Supplying a
+    /// configuration replaces that menu wholesale.
+    ///
+    /// Only links get one. A press on an image or on plain text falls through
+    /// to WebKit by returning nil, which leaves selection, Copy and the image
+    /// actions exactly as they were.
+    func webView(_ webView: WKWebView,
+                 contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo,
+                 completionHandler: @escaping (UIContextMenuConfiguration?) -> Void) {
+        guard let url = elementInfo.linkURL, url.isWebPage else {
+            completionHandler(nil)
+            return
+        }
+
+        let configuration = UIContextMenuConfiguration(identifier: nil, previewProvider: nil) {
+            [weak self] _ in
+            guard let self else { return nil }
+            return UIMenu(children: [
+                UIAction(title: "Open",
+                         image: UIImage(systemName: "arrow.up.right.square")) { [weak self] _ in
+                    guard let self else { return }
+                    // The same tab, so this counts as following a link rather
+                    // than as starting somewhere new — the visit chain holds.
+                    self.webView.load(self.pageRequest(url))
+                },
+                UIAction(title: "Open in New Tab",
+                         image: UIImage(systemName: "plus.square.on.square")) { [weak self] _ in
+                    // Descended from the page it was tapped on, so the chain is
+                    // not reset.
+                    self?.openTab(url: url, startsNewChain: false)
+                },
+                UIAction(title: "Open in Background",
+                         image: UIImage(systemName: "square.stack")) { [weak self] _ in
+                    guard let self else { return }
+                    // Queued without being switched to, which is the whole point
+                    // of it — the reader keeps their place and collects links as
+                    // they go.
+                    stashSessionState()
+                    tabManager.addTab(url: url, select: false)
+                    homeOverlay.setTabs(tabs, current: currentTabID)
+                },
+                UIMenu(options: .displayInline, children: [
+                    UIAction(title: "Copy Link",
+                             image: UIImage(systemName: "doc.on.doc")) { _ in
+                        UIPasteboard.general.url = url
+                    },
+                    UIAction(title: "Share…",
+                             image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+                        guard let self else { return }
+                        let share = UIActivityViewController(activityItems: [url],
+                                                             applicationActivities: nil)
+                        share.popoverPresentationController?.sourceView = self.webView
+                        share.popoverPresentationController?.sourceRect =
+                            CGRect(x: self.webView.bounds.midX, y: self.webView.bounds.midY,
+                                   width: 1, height: 1)
+                        self.present(share, animated: true)
+                    },
+                ]),
+            ])
+        }
+        completionHandler(configuration)
+    }
+
 
     /// A page asking for a new window: `target="_blank"`, or `window.open`.
     ///
