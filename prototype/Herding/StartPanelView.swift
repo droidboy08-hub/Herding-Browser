@@ -181,8 +181,12 @@ final class StartPanelView: UIView {
             UIImage.SymbolConfiguration(pointSize: 16, weight: .regular), forImageIn: .normal)
         gridButton.addTarget(self, action: #selector(toggleGrid), for: .touchUpInside)
 
-        privateButton.setPreferredSymbolConfiguration(
-            UIImage.SymbolConfiguration(pointSize: 16, weight: .regular), forImageIn: .normal)
+        // A word rather than a glyph. The masks icon was decorative enough to
+        // read as an ornament on the header, and private browsing is not a
+        // thing to be coy about — a control that changes where your history
+        // goes should say what it is.
+        privateButton.titleLabel?.font = Self.rounded(15, .semibold)
+        privateButton.setTitle("Private", for: .normal)
         privateButton.addTarget(self, action: #selector(togglePrivate), for: .touchUpInside)
         updatePrivateButton()
 
@@ -354,10 +358,11 @@ final class StartPanelView: UIView {
     /// Filled mask while private, outline while not — the state has to be
     /// readable at a glance, because everything about what gets stored depends
     /// on it.
+    /// Tinted while private, plain while not — the same two states the filled
+    /// and outline masks used to carry, in the one place a word can carry them.
     private func updatePrivateButton() {
-        let name = isPrivateBrowsing ? "theatermasks.fill" : "theatermasks"
-        privateButton.setImage(UIImage(systemName: name), for: .normal)
-        privateButton.tintColor = isPrivateBrowsing ? .tintColor : .secondaryLabel
+        privateButton.setTitleColor(isPrivateBrowsing ? .tintColor : .secondaryLabel,
+                                    for: .normal)
         privateButton.accessibilityLabel = isPrivateBrowsing
             ? "Leave private browsing" : "Private browsing"
         if mode == .tabs {
