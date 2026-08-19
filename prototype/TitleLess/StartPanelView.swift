@@ -688,7 +688,8 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
             SettingsSection(title: "About", rows: [
                 [.version],
                 // Only shown once there is somewhere for them to go — see
-                // `SupportInfo`, where both are still blank.
+                // `SupportInfo`.
+                SupportInfo.hasWebsite ? [.action("Website")] : [],
                 SupportInfo.hasSupportURL ? [.action("Help")] : [],
                 SupportInfo.hasContact ? [.action("Send Feedback"),
                                           .action("Report a Site Problem")] : [],
@@ -1098,6 +1099,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 case "App Icon":        onShowAppIcon?()
                 case "Passwords":       onShowPasswords?()
                 case "Licences":        onShowLicences?()
+                case "Website":         onOpenSupport?(.website)
                 case "Help":            onOpenSupport?(.help)
                 case "Send Feedback":   onOpenSupport?(.feedback)
                 case "Report a Site Problem": onOpenSupport?(.siteProblem)

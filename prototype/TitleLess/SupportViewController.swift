@@ -2,6 +2,7 @@ import UIKit
 
 /// What a support row is asking for.
 enum SupportDestination {
+    case website
     case help
     case feedback
     /// Feedback about the page you are on, which is most of what a browser
@@ -28,7 +29,7 @@ enum SupportInfo {
 
     /// Where someone goes for help. Required by App Store Connect.
     /// e.g. "https://example.com/support"
-    static let supportURL = "https://droidboy08-hub.github.io/herding-site/support.html"
+    static let supportURL = "https://supporttitleless-dev.github.io/Titleless/support.html"
 
     /// Where feedback and bug reports go. An address is fine — the app opens a
     /// pre-addressed mail with the version filled in.
@@ -38,9 +39,18 @@ enum SupportInfo {
     /// The privacy policy, hosted. The app also carries the policy offline, but
     /// App Store Connect wants a URL and will not accept the in-app copy.
     /// e.g. "https://example.com/privacy"
-    static let privacyPolicyURL = "https://droidboy08-hub.github.io/herding-site/privacy.html"
+    static let privacyPolicyURL = "https://supporttitleless-dev.github.io/Titleless/privacy.html"
+
+    /// The app's own page. App Store Connect calls this the marketing URL, and
+    /// it is the one field of the four that is optional there.
+    static let websiteURL = "https://supporttitleless-dev.github.io/Titleless/"
+
+    /// Where the source and the hosted pages live. Shown under Licences, which
+    /// is where someone looking for it would think to look.
+    static let sourceURL = "https://github.com/supporttitleless-dev/Titleless"
 
     static var hasSupportURL: Bool { !supportURL.isEmpty }
+    static var hasWebsite: Bool { !websiteURL.isEmpty }
     static var hasContact: Bool { !contactEmail.isEmpty }
 
     /// A mail draft with the things you would otherwise have to ask for.
