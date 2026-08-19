@@ -49,15 +49,6 @@ enum Settings {
         set { d.set(newValue, forKey: "settings.autoRetryDownloads") }
     }
 
-    // MARK: History
-    /// Collapse consecutive visits to the same page into a single row. Off by
-    /// default: history shows every visit, which is what the visits table
-    /// actually holds.
-    static var groupRepeatedVisits: Bool {
-        get { bool("settings.groupRepeatedVisits", default: false) }
-        set { d.set(newValue, forKey: "settings.groupRepeatedVisits") }
-    }
-
     // MARK: Tabs
     /// Persist the user's choice of list vs grid view for tabs.
     static var tabsInGridView: Bool {

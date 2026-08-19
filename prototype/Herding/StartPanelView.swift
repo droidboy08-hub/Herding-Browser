@@ -135,6 +135,15 @@ final class StartPanelView: UIView {
     private var tableTop: NSLayoutConstraint!
     private var searchBarHeight: NSLayoutConstraint!
 
+    /// What a settings row costs when its label is one ordinary line.
+    ///
+    /// An estimate, not a rule — the rows measure themselves (see
+    /// `heightForRowAt`). A fixed 44 clipped the descenders off anything with a
+    /// `g` or a `p` in it the moment the text was larger than average, and
+    /// nothing about a browser's settings is worth making unreadable at the
+    /// text size somebody chose.
+    private static let settingsRowHeight: CGFloat = 44
+
     private static let relative: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter(); f.unitsStyle = .abbreviated; return f
     }()
@@ -271,7 +280,8 @@ final class StartPanelView: UIView {
         // here and given back deliberately in `heightForHeaderInSection`.
         table.sectionHeaderTopPadding = 0
         table.showsVerticalScrollIndicator = false
-        table.rowHeight = 58
+        table.rowHeight = UITableView.automaticDimension
+        table.estimatedRowHeight = Self.settingsRowHeight
         table.dataSource = self
         table.delegate = self
         table.register(UITableViewCell.self, forCellReuseIdentifier: "cell")
@@ -367,7 +377,7 @@ final class StartPanelView: UIView {
         switch mode {
         case .tabs:      titleLabel.text = isPrivateBrowsing ? "Private Tabs" : "Tabs"
         case .downloads: titleLabel.text = "Downloads"; refreshDownloads()
-        case .history:   titleLabel.text = "History"; entries = history?.recentEntries(grouping: Settings.groupRepeatedVisits) ?? []
+        case .history:   titleLabel.text = "History"; entries = history?.recentEntries() ?? []
         case .bookmarks: titleLabel.text = "Bookmarks"; bookmarks = BookmarkStore.shared.bookmarks
         case .settings:  titleLabel.text = "Settings"
         }
@@ -382,7 +392,9 @@ final class StartPanelView: UIView {
         searchButton.isHidden = !showingDownloads
         collection.isHidden = !showingTabs
         table.isHidden = showingTabs
-        table.rowHeight = showingDownloads ? 66 : 58
+        // Downloads is two fixed lines; everything else measures itself.
+        table.rowHeight = showingDownloads ? 66 : UITableView.automaticDimension
+        table.estimatedRowHeight = showingDownloads ? 66 : Self.settingsRowHeight
 
         // The filter only belongs to Downloads; leaving it open across a mode
         // switch would filter a list it doesn't apply to.
@@ -412,7 +424,7 @@ final class StartPanelView: UIView {
     /// is the visible mode.
     func historyChanged() {
         guard mode == .history else { return }
-        entries = history?.recentEntries(grouping: Settings.groupRepeatedVisits) ?? []
+        entries = history?.recentEntries() ?? []
         table.reloadData()
     }
 
@@ -618,17 +630,6 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 .toggle("Allow pinch to zoom",
                         get: { Settings.allowZoom },
                         set: { Settings.allowZoom = $0 }),
-            ], footer: "Zoom works even on sites that switch it off."),
-            SettingsSection(title: "History", rows: [
-                .toggle("Group repeat visits",
-                        get: { Settings.groupRepeatedVisits },
-                        set: { [weak self] on in
-                            Settings.groupRepeatedVisits = on
-                            // History is a different mode, so the list isn't on
-                            // screen — re-read now so it's already correct when
-                            // it is opened.
-                            self?.entries = self?.history?.recentEntries(grouping: on) ?? []
-                        }),
             ]),
             // One section for the lot: the blocking level and the shields around
             // it are the same decision seen from different angles, and splitting
@@ -669,9 +670,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 // is not one you can hand to somebody else for a minute.
                 .destructive("Clear History"),
                 .destructive("Clear Website Data"),
-            ], footer: Settings.blockingLevel.summary
-                     + "\n\nBlocking JavaScript is the strongest setting here, "
-                     + "and the most likely to break a site."),
+            ]),
             // One section, because the split was arbitrary: how Home is laid out
             // and what the app looks like are the same question asked twice, and
             // two three-row groups made you scroll past one to reach the other.
@@ -696,13 +695,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 .appearanceModePicker,
                 .action("App Icon"),
                 .action("Wallpaper"),
-            ], footer: "Favourites: tap + to keep the page you're on, hold to "
-                     + "remove.\n\nOpening Home by swiping down moves reload "
-                     + "to the address capsule — tap it to reload, or to stop a "
-                     + "page that is still loading. Off, the swipe is "
-                     + "pull-to-refresh and the capsule opens Home. Either way "
-                     + "you have both.\n\nSwipe sensitivity sets how far you "
-                     + "drag down a page to open Home."),
+            ]),
             SettingsSection(title: "Media", rows: [
                 // One switch for both halves: claiming the audio session and
                 // telling the page it is still visible only work together, and
@@ -713,8 +706,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                             Settings.backgroundPlayback = on
                             NotificationCenter.default.post(name: .mediaSettingsChanged, object: nil)
                         }),
-            ], footer: "Background audio keeps sound going when you leave the "
-                     + "app or lock the screen."),
+            ]),
             SettingsSection(title: "About", rows: [
                 [.version],
                 // Only shown once there is somewhere for them to go — see
@@ -723,11 +715,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 SupportInfo.hasContact ? [.action("Send Feedback"),
                                           .action("Report a Site Problem")] : [],
                 [.action("Privacy Policy"), .action("Terms of Use"), .action("Licences")],
-            ].flatMap { $0 },
-                            footer: SupportInfo.developerName.isEmpty
-                                ? "Made with open-source software. No account, no analytics."
-                                : "By \(SupportInfo.developerName). Made with open-source "
-                                + "software. No account, no analytics."),
+            ].flatMap { $0 }),
         ]
     }
 
@@ -785,7 +773,6 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 NotificationCenter.default.post(name: .contentBlockingChanged, object: nil)
                 guard let self, let button else { return }
                 self.applyBlockingLevel(to: button, section: section)
-                self.refreshFooter(inSection: section)
             }
         })
     }
@@ -812,22 +799,6 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
         })
     }
 
-    /// Repaint a section footer whose words depend on a setting, without
-    /// disturbing the rows above it.
-    private func refreshFooter(inSection section: Int) {
-        guard mode == .settings, section < settingsSections.count,
-              let footer = table.footerView(forSection: section) else { return }
-
-        var configuration = footer.contentConfiguration as? UIListContentConfiguration
-                         ?? footer.defaultContentConfiguration()
-        configuration.text = settingsSections[section].footer
-        footer.contentConfiguration = configuration
-
-        // The new text needn't wrap to the same number of lines. An empty batch
-        // update re-measures the section's heights and nothing else.
-        table.performBatchUpdates(nil)
-    }
-
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
         switch mode {
         case .history, .downloads, .bookmarks, .tabs: return nil
@@ -837,19 +808,20 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
 
     /// Tight, and tighter still for a section with no title.
     ///
-    /// The default grouped spacing is drawn for a full screen; inside a 520pt
-    /// card it wastes a row's worth of height between every group. A titled
-    /// section gets just enough to separate the words from the rows above.
+    /// The default grouped spacing is drawn for a full screen; inside a card
+    /// this size it wastes a row's worth of height between every group. A
+    /// titled section gets just enough to separate the words from the rows
+    /// above, and nothing more.
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
         guard mode == .settings else { return .leastNormalMagnitude }
-        return settingsSections[section].title == nil ? 8 : 30
+        return settingsSections[section].title == nil ? 6 : 24
     }
 
     /// A footer only earns space when it has something to say; the default
     /// reserves it either way.
     func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
         guard mode == .settings else { return .leastNormalMagnitude }
-        return settingsSections[section].footer == nil ? 4 : UITableView.automaticDimension
+        return settingsSections[section].footer == nil ? 2 : UITableView.automaticDimension
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -1063,7 +1035,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
         button.addAction(UIAction { [weak self] _ in
             guard let self else { return }
             history?.remove(entry)
-            self.entries = history?.recentEntries(grouping: Settings.groupRepeatedVisits) ?? []
+            self.entries = history?.recentEntries() ?? []
             self.table.reloadData()
         }, for: .touchUpInside)
         return button
@@ -1222,14 +1194,14 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
         let delete = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, done in
             guard let self else { done(false); return }
             history?.remove(entry)
-            self.entries = history?.recentEntries(grouping: Settings.groupRepeatedVisits) ?? []
+            self.entries = history?.recentEntries() ?? []
             tableView.reloadData()
             done(true)
         }
         let forget = UIContextualAction(style: .destructive, title: "Forget") { [weak self] _, _, done in
             guard let self else { done(false); return }
             history?.forget(entry)
-            self.entries = history?.recentEntries(grouping: Settings.groupRepeatedVisits) ?? []
+            self.entries = history?.recentEntries() ?? []
             tableView.reloadData()
             done(true)
         }
