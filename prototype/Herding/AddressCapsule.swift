@@ -14,6 +14,12 @@ import UIKit
 final class AddressCapsule: UIView {
 
     var onTap: (() -> Void)?
+    /// The long press has landed and the menu is opening.
+    ///
+    /// Reported rather than handled here because the capsule owns no haptics —
+    /// the browser holds the generators, and this press has to feel distinct
+    /// from a tap on the same surface.
+    var onMenuOpen: (() -> Void)?
     /// +1 for the next tab, -1 for the previous one.
     var onSwitchTab: ((Int) -> Void)?
 
@@ -109,6 +115,8 @@ final class AddressCapsule: UIView {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.backgroundColor = .clear
         button.showsMenuAsPrimaryAction = false      // menu on the press, tap stays free
+        button.addAction(UIAction { [weak self] _ in self?.onMenuOpen?() },
+                         for: .menuActionTriggered)
         button.addAction(UIAction { [weak self] _ in self?.onTap?() },
                          for: .primaryActionTriggered)
         addSubview(button)

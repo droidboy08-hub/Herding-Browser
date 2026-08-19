@@ -645,10 +645,9 @@ final class BrowserViewController: UIViewController {
         // WebKit re-derives the zoom limits whenever the viewport changes, which
         // on a single-page app is long after the load finished. Watching the
         // scale itself is the only way to catch every one of those.
-        zoomObs = webView.scrollView.observe(\.zoomScale, options: [.new]) {
-            [weak self] scrollView, _ in
+        zoomObs = webView.scrollView.observe(\.zoomScale, options: [.new]) { scrollView, _ in
             Task { @MainActor in
-                guard let self, !Settings.allowZoom, scrollView.zoomScale != 1 else { return }
+                guard !Settings.allowZoom, scrollView.zoomScale != 1 else { return }
                 scrollView.setZoomScale(1, animated: false)
             }
         }
@@ -704,6 +703,9 @@ final class BrowserViewController: UIViewController {
         // Rebuilt every time it opens: the menu reflects the current settings
         // and disables what the current page can't do, so one captured once
         // would go stale the first time either changed.
+        // The menu opening gets its own, heavier tick — the press has no other
+        // confirmation until the menu actually appears.
+        addressCapsule.onMenuOpen = { [weak self] in self?.menuFeedback.impactOccurred() }
         addressCapsule.menu = UIMenu(children: [
             UIDeferredMenuElement.uncached { [weak self] completion in
                 completion(self?.pageMenu().children ?? [])
