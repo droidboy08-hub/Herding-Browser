@@ -85,7 +85,7 @@ enum Settings {
     /// It opens on whichever panel was last shown, so the box comes back the way
     /// it was left.
     static var startBoxShowsPanel: Bool {
-        get { bool("settings.startBoxShowsPanel", default: false) }
+        get { bool("settings.startBoxShowsPanel", default: true) }
         set { d.set(newValue, forKey: "settings.startBoxShowsPanel") }
     }
 

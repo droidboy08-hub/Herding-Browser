@@ -38,6 +38,7 @@ final class StartPanelView: UIView {
     var onShowAppearance: (() -> Void)?
     var onShowAppIcon: (() -> Void)?
     var onShowStartBoxButtons: (() -> Void)?
+    var onShowHomeBehaviour: (() -> Void)?
     var onShowPasswords: (() -> Void)?
     var onShowLicences: (() -> Void)?
     var onOpenSupport: ((SupportDestination) -> Void)?
@@ -657,19 +658,9 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
             // two three-row groups made you scroll past one to reach the other.
             SettingsSection(title: "Home & Appearance", rows: [
                 .action("Buttons"),
-                .toggle("Favourites",
-                        get: { Settings.showFavourites },
-                        set: { Settings.showFavourites = $0 }),
-                .toggle("Always show panel",
-                        get: { Settings.startBoxShowsPanel },
-                        set: { Settings.startBoxShowsPanel = $0 }),
-                .toggle("Open Home by swiping down",
-                        get: { Settings.swipeOpensStartBox },
-                        set: { on in
-                            Settings.swipeOpensStartBox = on
-                            NotificationCenter.default.post(name: .swipeBindingChanged,
-                                                            object: nil)
-                        }),
+                // What is on Home, then how Home acts — the two halves of the
+                // same screen, side by side, with the app's looks after them.
+                .action("Home Behaviour"),
                 .appearanceModePicker,
                 .action("App Icon"),
                 .action("Wallpaper"),
@@ -1093,6 +1084,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 switch title {
                 case "Downloads":       onShowDownloads?()
                 case "Buttons":         onShowStartBoxButtons?()
+                case "Home Behaviour":  onShowHomeBehaviour?()
                 case "Safeguards":       onShowSafeguards?()
                 case "Content Filtering": onShowContentFiltering?()
                 case "Wallpaper":       onShowAppearance?()
