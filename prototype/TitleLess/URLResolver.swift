@@ -184,7 +184,9 @@ extension URL {
               let items = components.queryItems, !items.isEmpty else { return self }
 
         // Whole families: analytics platforms number their own parameters, and
-        // the prefix is the reliable part.
+        // the prefix is the reliable part. Note `hsa_` covers HubSpot's ad
+        // parameters but none of its email ones, which are named below and
+        // begin with underscores instead.
         let prefixes = ["utm_", "hsa_", "pk_", "mtm_", "matomo_", "piwik_", "oly_"]
         // Individually named click and campaign identifiers.
         let exact: Set<String> = [
@@ -203,6 +205,13 @@ extension URL {
             "_ga", "_gl",                                      // cross-domain GA
             "ref_src", "ref_url",                              // embeds
             "spm", "scm",                                      // Alibaba
+            // Email and marketing-automation identifiers. Each of these names a
+            // single recipient — the most personal kind of link decoration
+            // there is, since the link only exists in one person's inbox.
+            "_hsenc", "__hssc", "__hstc", "__hsfp", "hsctatracking",  // HubSpot
+            "mkt_tok",                                         // Marketo
+            "__s",                                             // Drip
+            "wickedid",                                        // Wicked Reports
         ]
 
         // Names too short or too generic to strip everywhere, but unambiguous on
