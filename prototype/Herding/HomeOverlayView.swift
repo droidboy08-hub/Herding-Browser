@@ -177,11 +177,16 @@ final class HomeOverlayView: UIView {
         settingsButton.setImage(UIImage(systemName: "gearshape"), for: .normal)
         let symCfg = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
         for b in [tabsButton, historyButton, settingsButton] {
-            b.tintColor = .secondaryLabel
+            b.tintColor = .label
             b.setPreferredSymbolConfiguration(symCfg, forImageIn: .normal)
         }
-        downloadsButton.tintColor = .secondaryLabel
-        bookmarksButton.tintColor = .secondaryLabel
+        // Every icon in the row is `.label`, and they are meant to look it.
+        // `.secondaryLabel` left the two hand-drawn outlines — the download
+        // arrow and the bookmark — visibly paler than the SF Symbols next to
+        // them, since a sparse open outline carries less ink than a dense glyph
+        // at the same value.
+        downloadsButton.tintColor = .label
+        bookmarksButton.tintColor = .label
         tabsButton.accessibilityLabel = StartBoxButton.tabs.name
         historyButton.accessibilityLabel = StartBoxButton.history.name
         settingsButton.accessibilityLabel = StartBoxButton.settings.name

@@ -127,7 +127,16 @@ final class DownloadIconView: UIControl {
     }
 
     private func applyStroke() {
-        let color = (tintColor ?? .label).cgColor
+        // Resolved against the current traits, not left to `cgColor` to guess.
+        //
+        // A `CAShapeLayer` takes a `CGColor`, which is a fixed set of numbers —
+        // it cannot carry "whatever `secondaryLabel` means here". Asking a
+        // dynamic colour for its `cgColor` resolves it against whatever traits
+        // are current at that instant, which during layer construction is often
+        // not this view's. That is how this icon came to be drawn in dark
+        // mode's grey while sitting in a light interface, a shade paler than
+        // the SF Symbols beside it that UIKit keeps honest for us.
+        let color = (tintColor ?? .label).resolvedColor(with: traitCollection).cgColor
         for layer in [tray, stem, head] { layer.strokeColor = color }
     }
 
@@ -311,7 +320,7 @@ final class TrashIconView: UIControl {
     }
 
     private func applyStroke() {
-        let color = (tintColor ?? .label).cgColor
+        let color = (tintColor ?? .label).resolvedColor(with: traitCollection).cgColor
         bodyLayer.strokeColor = color
         lidLayer.strokeColor = color
     }
@@ -430,6 +439,9 @@ final class BookmarkIconView: UIControl {
         accessibilityTraits = .button
         buildLayer(strokeWidth: strokeWidth)
         addTarget(self, action: #selector(tapped), for: .touchUpInside)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (v: BookmarkIconView, _) in
+            v.applyStroke()
+        }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -481,8 +493,9 @@ final class BookmarkIconView: UIControl {
     }
 
     private func applyStroke() {
-        body.strokeColor = tintColor.cgColor
-        body.fillColor = isFilled ? tintColor.cgColor : UIColor.clear.cgColor
+        let color = (tintColor ?? .label).resolvedColor(with: traitCollection).cgColor
+        body.strokeColor = color
+        body.fillColor = isFilled ? color : UIColor.clear.cgColor
     }
 
     override func tintColorDidChange() {
