@@ -219,6 +219,32 @@ enum WallpaperStore {
         kind = .preset
     }
 
+    /// The gradient that belongs with a given interface style.
+    ///
+    /// Dark gets Ink and light gets the plain system one, because the two have
+    /// to agree: the cards are clear glass, so whatever is behind them is what
+    /// text is read against. A light interface over Ink is dark text on a dark
+    /// backdrop, which is the one combination that cannot be made to work by
+    /// adjusting the glass.
+    static func paired(with mode: Settings.AppearanceMode) -> WallpaperPreset {
+        mode == .light ? .system : WallpaperPreset.preset(id: "ink") ?? .system
+    }
+
+    /// Follow the appearance, unless the wallpaper is something the user chose
+    /// for its own sake.
+    ///
+    /// Only the two paired gradients are swapped. Anything else — another
+    /// preset, a bundled picture, their own photo or video — was picked
+    /// deliberately and is not ours to replace because a switch moved
+    /// elsewhere.
+    static func followAppearance(_ mode: Settings.AppearanceMode) {
+        guard kind == .preset,
+              presetID == "ink" || presetID == "system" else { return }
+        let wanted = paired(with: mode)
+        guard presetID != wanted.id else { return }
+        install(preset: wanted)
+    }
+
     /// Which bundled picture is chosen, when one is.
     static var builtInID: String? {
         get { UserDefaults.standard.string(forKey: "settings.wallpaperBuiltIn") }

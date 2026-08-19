@@ -771,6 +771,11 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
             UIAction(title: mode.name, state: mode == current ? .on : .off) {
                 [weak self, weak button] _ in
                 Settings.appearanceMode = mode
+                // The backdrop comes with it. Clear glass means whatever is
+                // behind the cards is what text is read against, so the two
+                // cannot be set independently without one of the combinations
+                // being unreadable.
+                WallpaperStore.followAppearance(mode)
                 guard let button else { return }
                 self?.applyAppearanceMode(to: button)
             }
