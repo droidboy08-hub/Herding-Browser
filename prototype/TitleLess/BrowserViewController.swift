@@ -36,6 +36,9 @@ final class BrowserViewController: UIViewController {
     private var themeColorObs: NSKeyValueObservation?
     private var underPageObs: NSKeyValueObservation?
     private var currentTopColor: UIColor?
+    /// Where the last long press landed, so the background-tab card can start
+    /// from the link rather than from the middle of the screen.
+    private var lastPressLocation: CGPoint?
     private let homeOverlay = HomeOverlayView()
     private var progressObservation: NSKeyValueObservation?
     private var hasLoadedPage = false
@@ -1312,6 +1315,11 @@ final class BrowserViewController: UIViewController {
             let icons = AppIconViewController()
             present(UINavigationController(rootViewController: icons), animated: true)
         }
+        homeOverlay.panel.onShowHomeBehaviour = { [weak self] in
+            guard let self else { return }
+            let behaviour = HomeBehaviourViewController()
+            present(UINavigationController(rootViewController: behaviour), animated: true)
+        }
         homeOverlay.panel.onShowStartBoxButtons = { [weak self] in
             guard let self else { return }
             let buttons = StartBoxButtonsViewController()
@@ -1631,6 +1639,19 @@ final class BrowserViewController: UIViewController {
         pan.delaysTouchesBegan = false
         webView.addGestureRecognizer(pan)
         revealPan = pan
+
+        // Purely an observer. `UIContextMenuInteraction` never says where it was
+        // triggered, and the background-tab animation has to start somewhere the
+        // eye was already looking. This records the point and does nothing else:
+        // it cancels no touches, delays none, and fails to nobody, so WebKit's
+        // own long press is untouched.
+        let watcher = UILongPressGestureRecognizer(target: self,
+                                                   action: #selector(recordPressLocation))
+        watcher.minimumPressDuration = 0.2
+        watcher.cancelsTouchesInView = false
+        watcher.delaysTouchesBegan = false
+        watcher.delegate = self
+        webView.addGestureRecognizer(watcher)
         configureSwipeDownBehaviour()
     }
 
@@ -2312,6 +2333,123 @@ extension BrowserViewController: WKNavigationDelegate {
 
 extension BrowserViewController: WKUIDelegate {
 
+    @objc private func recordPressLocation(_ press: UILongPressGestureRecognizer) {
+        guard press.state == .began else { return }
+        lastPressLocation = press.location(in: view)
+    }
+
+    /// Fly a small card into the capsule, to say a tab was opened behind you.
+    ///
+    /// A background tab is the one action in the app with no visible result —
+    /// the page you are reading does not change, so without this the tap simply
+    /// appears to do nothing. The card is the receipt: it starts where you
+    /// pressed, arcs down, and is swallowed by the capsule, which is where the
+    /// tab now lives and where the swipe to reach it will work.
+    ///
+    /// Keyframed rather than sprung. A spring overshoots, and something being
+    /// absorbed should arrive and stop — the ease-in on the travel is what makes
+    /// it read as falling into the capsule rather than landing on it.
+    private func flyIntoCapsule(_ url: URL) {
+        // Nothing to fly into if the capsule is scrolled away.
+        addressCapsule.setConcealed(false)
+
+        let chip = GlassSurface.makeView(radius: 14)
+        chip.translatesAutoresizingMaskIntoConstraints = true
+        GlassSurface.applyFallbackEdge(to: chip,
+                                       color: UIColor.white.withAlphaComponent(0.35).cgColor)
+
+        let label = UILabel()
+        label.text = url.host?.replacingOccurrences(of: "^www\\.", with: "",
+                                                    options: .regularExpression) ?? "New Tab"
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.textColor = .label
+        label.textAlignment = .center
+        label.frame = CGRect(x: 10, y: 0, width: 128, height: 28)
+        chip.contentView.addSubview(label)
+
+        chip.frame = CGRect(x: 0, y: 0, width: 148, height: 28)
+        chip.center = lastPressLocation ?? CGPoint(x: view.bounds.midX, y: view.bounds.midY)
+        chip.alpha = 0
+        chip.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
+        view.addSubview(chip)
+
+        let destination = addressCapsule.center
+
+        UIView.animateKeyframes(withDuration: 0.5, delay: 0, options: [.calculationModeCubic]) {
+            // Appear where the finger was, at full size.
+            UIView.addKeyframe(withRelativeStartTime: 0, relativeDuration: 0.2) {
+                chip.alpha = 1
+                chip.transform = .identity
+            }
+            // Then fall into the capsule, shrinking to about its width so the
+            // last frame of the card and the capsule are the same size.
+            UIView.addKeyframe(withRelativeStartTime: 0.2, relativeDuration: 0.8) {
+                chip.center = destination
+                chip.transform = CGAffineTransform(scaleX: 0.7, y: 0.55)
+            }
+            // Gone before it arrives, or it would sit on top of the capsule for
+            // a frame looking like a second control.
+            UIView.addKeyframe(withRelativeStartTime: 0.75, relativeDuration: 0.25) {
+                chip.alpha = 0
+            }
+        } completion: { _ in
+            chip.removeFromSuperview()
+            // The capsule takes the hit, the way it would if you had pressed it.
+            self.addressCapsule.acknowledgeArrival()
+        }
+    }
+
+    /// A live look at where a link goes, shown above its menu.
+    ///
+    /// Its own web view, and deliberately a bare one. Reusing the browser's
+    /// configuration would register the history bridge and every other message
+    /// handler against this controller, so merely *peeking* at a link would
+    /// write it into history and report its media — a preview that changes the
+    /// state of the app is not a preview.
+    ///
+    /// What it does keep is the two things a peek must not leak past: the
+    /// profile's data store, so a preview in a private session stays in that
+    /// session's memory, and the compiled blocking rules, so a page nobody has
+    /// chosen to visit yet cannot load its trackers.
+    private func linkPreview(for url: URL) -> UIViewController {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = profile.websiteDataStore
+        configuration.applicationNameForUserAgent =
+            "Version/17.0 Mobile/15E148 Safari/604.1"
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = !Settings.blockJavaScript
+        configuration.allowsInlineMediaPlayback = true
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+
+        let preview = WKWebView(frame: .zero, configuration: configuration)
+        preview.isOpaque = false
+        preview.backgroundColor = .systemBackground
+
+        let controller = UIViewController()
+        controller.view = preview
+
+        // The rules are compiled asynchronously and the preview is on screen
+        // immediately, so this loads once they are attached rather than racing
+        // them — a second or two of blank preview beats a preview full of ads.
+        Task { @MainActor in
+            await ContentBlocker.apply(level: Settings.blockingLevel, to: preview)
+            preview.load(pageRequest(url))
+        }
+        return controller
+    }
+
+    /// Tapping the preview itself opens the link, which is what a preview is
+    /// for. The same tab, since this is following a link rather than starting
+    /// somewhere new.
+    func webView(_ webView: WKWebView,
+                 contextMenuForElement elementInfo: WKContextMenuElementInfo,
+                 willCommitWithAnimator animator: UIContextMenuInteractionCommitAnimating) {
+        guard let url = elementInfo.linkURL, url.isWebPage else { return }
+        animator.addCompletion { [weak self] in
+            guard let self else { return }
+            self.webView.load(self.pageRequest(url))
+        }
+    }
+
     /// The menu shown by pressing and holding a link.
     ///
     /// Without this WebKit supplies its own, and its own has no idea this app
@@ -2330,8 +2468,10 @@ extension BrowserViewController: WKUIDelegate {
             return
         }
 
-        let configuration = UIContextMenuConfiguration(identifier: nil, previewProvider: nil) {
-            [weak self] _ in
+        let configuration = UIContextMenuConfiguration(
+            identifier: nil,
+            previewProvider: { [weak self] in self?.linkPreview(for: url) }
+        ) { [weak self] _ in
             guard let self else { return nil }
             return UIMenu(children: [
                 UIAction(title: "Open",
@@ -2356,6 +2496,7 @@ extension BrowserViewController: WKUIDelegate {
                     stashSessionState()
                     tabManager.addTab(url: url, select: false)
                     homeOverlay.setTabs(tabs, current: currentTabID)
+                    flyIntoCapsule(url)
                 },
                 UIMenu(options: .displayInline, children: [
                     UIAction(title: "Copy Link",

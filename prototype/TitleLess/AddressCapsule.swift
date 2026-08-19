@@ -269,6 +269,22 @@ final class AddressCapsule: UIView {
         }
     }
 
+    /// Take the impact of a tab arriving.
+    ///
+    /// The card that flew in has faded by now, so without this the tab lands
+    /// silently and the animation ends on nothing. A short squash and rebound
+    /// is the capsule absorbing it — the same language as the press, so it
+    /// reads as the same surface reacting rather than as a new effect.
+    func acknowledgeArrival() {
+        UIView.animate(springDuration: 0.18, bounce: 0) {
+            self.glass.transform = CGAffineTransform(scaleX: 1.06, y: 0.82)
+        } completion: { _ in
+            UIView.animate(springDuration: 0.4, bounce: 0.45) {
+                self.glass.transform = .identity
+            }
+        }
+    }
+
     /// Slides out of the way, and back. Visibility only — the capsule never
     /// resizes on its way out, and its geometry never changes.
     func setConcealed(_ concealed: Bool, animated: Bool = true) {
