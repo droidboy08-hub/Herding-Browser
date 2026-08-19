@@ -11,22 +11,7 @@ import SafariServices
 final class BrowserViewController: UIViewController {
 
     private var webView: WKWebView!
-    /// The strip over the status bar / Dynamic Island.
-    ///
-    /// Painted the page's own background colour, so it reads as the page
-    /// running to the top of the screen rather than as a band above it. There
-    /// is deliberately no blur, no glass and no tint of our own on any OS
-    /// version: any of those makes the strip a *surface*, and a surface is the
-    /// thing this is trying not to be.
-    ///
-    /// Still a visual-effect view rather than a plain one only because the
-    /// hierarchy below it is built into `contentView`; `effect` stays nil.
-    private let topBar = UIVisualEffectView(effect: nil)
-    /// The site colour, over the blur. Separate from the bar because the blur's
-    /// own view can't carry a background colour without cancelling the blur.
-    private let topTint = UIView()
-    /// The line along the bottom of the blurred bar.
-    private let topHairline = UIView()
+    private let topBar = UIView()   // solid, adapts to the site color
     /// The only chrome shown over a page: which site you are on, and the way
     /// into the start box, the page menu and the other tabs. Replaces the round
     /// refresh button — reload is now pull-to-refresh. See `AddressCapsule`.
@@ -51,8 +36,6 @@ final class BrowserViewController: UIViewController {
     private var themeColorObs: NSKeyValueObservation?
     private var underPageObs: NSKeyValueObservation?
     private var currentTopColor: UIColor?
-    /// Drives the top strip's slide, so the two directions can't fight.
-    private var isTopBarConcealed = false
     private let homeOverlay = HomeOverlayView()
     private var progressObservation: NSKeyValueObservation?
     private var hasLoadedPage = false
@@ -424,8 +407,6 @@ final class BrowserViewController: UIViewController {
         if let tab = tabManager.selectedTab {
             hasLoadedPage = true
             addressCapsule.show(url: webView.url)
-            // The strip travels with the capsule, so it has to be put back with it.
-            setTopBarConcealed(false, animated: false)
             // The overlay starts out visible — that's the no-tabs launch state,
             // and its backdrop is opaque. Restoring a tab has to take it down, or
             // the restored page loads behind a white screen the user can't even
@@ -581,42 +562,17 @@ final class BrowserViewController: UIViewController {
     private func setupWebView() {
         installWebView()
 
-        // Bar over the top safe area (status bar / Dynamic Island), adapting to
-        // the site colour. Height tracks the safe-area top automatically.
-        //
-        // The web view already spans the full height with `.always` inset
-        // adjustment, so page content passes *under* this strip as it scrolls —
-        // which is the whole reason a blur here shows anything at all rather
-        // than a pane of frosted background colour.
+        // Solid bar over the top safe area (status bar / Dynamic Island) that
+        // adapts to the site color. Height tracks the safe-area top automatically.
         topBar.translatesAutoresizingMaskIntoConstraints = false
+        topBar.backgroundColor = .systemBackground
         view.addSubview(topBar)
-        topTint.translatesAutoresizingMaskIntoConstraints = false
-        topBar.contentView.addSubview(topTint)
         NSLayoutConstraint.activate([
             topBar.topAnchor.constraint(equalTo: view.topAnchor),
             topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             topBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-
-            topTint.topAnchor.constraint(equalTo: topBar.contentView.topAnchor),
-            topTint.bottomAnchor.constraint(equalTo: topBar.contentView.bottomAnchor),
-            topTint.leadingAnchor.constraint(equalTo: topBar.contentView.leadingAnchor),
-            topTint.trailingAnchor.constraint(equalTo: topBar.contentView.trailingAnchor),
         ])
-
-        topHairline.translatesAutoresizingMaskIntoConstraints = false
-        topHairline.backgroundColor = .separator
-        topBar.contentView.addSubview(topHairline)
-        NSLayoutConstraint.activate([
-            topHairline.bottomAnchor.constraint(equalTo: topBar.contentView.bottomAnchor),
-            topHairline.leadingAnchor.constraint(equalTo: topBar.contentView.leadingAnchor),
-            topHairline.trailingAnchor.constraint(equalTo: topBar.contentView.trailingAnchor),
-            // One device pixel, not one point — a point-thick rule reads as a
-            // border someone drew rather than as the edge of a surface.
-            topHairline.heightAnchor.constraint(
-                equalToConstant: 1 / UIScreen.main.scale),
-        ])
-        applyTopColor()
     }
 
     /// Build the web view itself and put it in the view hierarchy.
@@ -701,64 +657,16 @@ final class BrowserViewController: UIViewController {
         }
     }
 
-    /// Paint the strip the colour of the page behind it.
-    ///
-    /// `underPageBackgroundColor` first, and `themeColor` only as a fallback,
-    /// which is the opposite of what a browser tinting its toolbar would do.
-    /// The two answer different questions. `themeColor` is the `<meta>` tag —
-    /// a brand colour a site nominates for browser furniture, frequently
-    /// nothing like the page itself. `underPageBackgroundColor` is what WebKit
-    /// paints beyond the document's own bounds when the page is rubber-banded,
-    /// which makes it *by construction* the colour the page continues in. This
-    /// strip is pretending to be more page, so that is the one it wants.
     private func applyTopColor() {
-        let color = webView.underPageBackgroundColor ?? webView.themeColor
+        let color = webView.themeColor ?? webView.underPageBackgroundColor
         currentTopColor = color
-
-        topBar.isHidden = false
-        // The system's scroll edge effect is explicitly not used. It dissolves
-        // content into a soft edge, which announces the boundary this is trying
-        // to erase.
-        if #available(iOS 26.0, *) {
-            webView.scrollView.topEdgeEffect.isHidden = true
-        }
-        topHairline.isHidden = true
-
-        // No blur, no glass, no wash — on any OS version. The strip *is* the
-        // page's background, so there is no seam to soften and nothing to see
-        // through. Anything layered on top would give the band back its edges.
-        topBar.effect = nil
         UIView.animate(withDuration: 0.25) {
-            self.topTint.backgroundColor = color ?? .systemBackground
+            // Plain solid bar in the site color.
+            self.topBar.backgroundColor = color ?? .systemBackground
         }
-
         setNeedsStatusBarAppearanceUpdate()
     }
 
-    /// Slide the strip up out of the way, and back.
-    ///
-    /// Moved by the same scroll signal as the capsule, so the page reaches the
-    /// physical top of the screen while reading. The strip is opaque and exactly
-    /// safe-area tall, so translating it by its own height puts it cleanly
-    /// off-screen and reveals the page that was already scrolling underneath.
-    private func setTopBarConcealed(_ concealed: Bool, animated: Bool = true) {
-        guard concealed != isTopBarConcealed else { return }
-        isTopBarConcealed = concealed
-        let height = topBar.bounds.height
-        // Nothing to hide behind on a device with no top inset.
-        guard height > 0 else { return }
-        let move = {
-            self.topBar.transform = concealed
-                ? CGAffineTransform(translationX: 0, y: -height)
-                : .identity
-        }
-        guard animated else { move(); return }
-        UIView.animate(springDuration: 0.34, bounce: 0.1, animations: move)
-    }
-
-    /// Floating glass refresh button, bottom-right over the page. Tap reloads,
-    /// long-press hard-reloads ignoring cache. Page-load progress draws as a ring
-    /// around it (there is no top progress bar).
     /// The address capsule: bottom centre, over the page.
     ///
     /// Bottom *centre* and not bottom-trailing, where the round button sat. The
@@ -883,7 +791,6 @@ final class BrowserViewController: UIViewController {
         // At the top, always shown, whatever the last direction was.
         if y <= -scrollView.adjustedContentInset.top + 1 {
             addressCapsule.setConcealed(false)
-            setTopBarConcealed(false)
             return
         }
         // Rubber-banding past the bottom reverses the offset without the reader
@@ -894,9 +801,6 @@ final class BrowserViewController: UIViewController {
         let moved = y - lastScrollY
         guard abs(moved) > 6 else { return }
         addressCapsule.setConcealed(moved > 0)
-        // The strip over the notch goes with it, so reading is genuinely
-        // full-screen rather than full-screen-below-a-band.
-        setTopBarConcealed(moved > 0)
     }
 
     override func viewDidLayoutSubviews() {
@@ -1853,8 +1757,6 @@ final class BrowserViewController: UIViewController {
         // Nothing is navigating, so nothing will commit — the capsule has to be
         // put back explicitly or it stays hidden over a live page.
         addressCapsule.show(url: webView.url)
-        // The strip travels with the capsule, so it has to be put back with it.
-        setTopBarConcealed(false, animated: false)
         setNeedsUpdateOfHomeIndicatorAutoHidden()
         applyZoomPolicy()
     }
@@ -1903,8 +1805,6 @@ final class BrowserViewController: UIViewController {
             homeOverlay.dismiss(animated: true)
             // Same tab: the box just closes, and no load follows to reveal it.
             addressCapsule.show(url: webView.url)
-            // The strip travels with the capsule, so it has to be put back with it.
-            setTopBarConcealed(false, animated: false)
             return
         }
         stashSessionState()
@@ -1986,8 +1886,6 @@ extension BrowserViewController: WKNavigationDelegate {
         // The address is settled at commit — this is the first moment it is
         // safe to say which site you are on, and the last moment it changes.
         addressCapsule.show(url: webView.url)
-        // The strip travels with the capsule, so it has to be put back with it.
-        setTopBarConcealed(false, animated: false)
         setNeedsUpdateOfHomeIndicatorAutoHidden()
         applyZoomPolicy()
         guard let url = webView.url else { return }
@@ -2178,8 +2076,6 @@ extension BrowserViewController: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         addressCapsule.show(url: webView.url)
-        // The strip travels with the capsule, so it has to be put back with it.
-        setTopBarConcealed(false, animated: false)
         endPullToRefresh()
         contentProcessCrashes = 0   // a clean load means we've recovered
         pendingNavigationURL = nil  // backstop: a commit we somehow missed
