@@ -36,9 +36,6 @@ final class BrowserViewController: UIViewController {
     private var themeColorObs: NSKeyValueObservation?
     private var underPageObs: NSKeyValueObservation?
     private var currentTopColor: UIColor?
-    /// Where the last long press landed, so the background-tab card can start
-    /// from the link rather than from the middle of the screen.
-    private var lastPressLocation: CGPoint?
     private let homeOverlay = HomeOverlayView()
     private var progressObservation: NSKeyValueObservation?
     private var hasLoadedPage = false
@@ -1640,18 +1637,6 @@ final class BrowserViewController: UIViewController {
         webView.addGestureRecognizer(pan)
         revealPan = pan
 
-        // Purely an observer. `UIContextMenuInteraction` never says where it was
-        // triggered, and the background-tab animation has to start somewhere the
-        // eye was already looking. This records the point and does nothing else:
-        // it cancels no touches, delays none, and fails to nobody, so WebKit's
-        // own long press is untouched.
-        let watcher = UILongPressGestureRecognizer(target: self,
-                                                   action: #selector(recordPressLocation))
-        watcher.minimumPressDuration = 0.2
-        watcher.cancelsTouchesInView = false
-        watcher.delaysTouchesBegan = false
-        watcher.delegate = self
-        webView.addGestureRecognizer(watcher)
         configureSwipeDownBehaviour()
     }
 
@@ -2333,72 +2318,6 @@ extension BrowserViewController: WKNavigationDelegate {
 
 extension BrowserViewController: WKUIDelegate {
 
-    @objc private func recordPressLocation(_ press: UILongPressGestureRecognizer) {
-        guard press.state == .began else { return }
-        lastPressLocation = press.location(in: view)
-    }
-
-    /// Fly a small card into the capsule, to say a tab was opened behind you.
-    ///
-    /// A background tab is the one action in the app with no visible result —
-    /// the page you are reading does not change, so without this the tap simply
-    /// appears to do nothing. The card is the receipt: it starts where you
-    /// pressed, arcs down, and is swallowed by the capsule, which is where the
-    /// tab now lives and where the swipe to reach it will work.
-    ///
-    /// Keyframed rather than sprung. A spring overshoots, and something being
-    /// absorbed should arrive and stop — the ease-in on the travel is what makes
-    /// it read as falling into the capsule rather than landing on it.
-    private func flyIntoCapsule(_ url: URL) {
-        // Nothing to fly into if the capsule is scrolled away.
-        addressCapsule.setConcealed(false)
-
-        let chip = GlassSurface.makeView(radius: 14)
-        chip.translatesAutoresizingMaskIntoConstraints = true
-        GlassSurface.applyFallbackEdge(to: chip,
-                                       color: UIColor.white.withAlphaComponent(0.35).cgColor)
-
-        let label = UILabel()
-        label.text = url.host?.replacingOccurrences(of: "^www\\.", with: "",
-                                                    options: .regularExpression) ?? "New Tab"
-        label.font = .systemFont(ofSize: 12, weight: .medium)
-        label.textColor = .label
-        label.textAlignment = .center
-        label.frame = CGRect(x: 10, y: 0, width: 128, height: 28)
-        chip.contentView.addSubview(label)
-
-        chip.frame = CGRect(x: 0, y: 0, width: 148, height: 28)
-        chip.center = lastPressLocation ?? CGPoint(x: view.bounds.midX, y: view.bounds.midY)
-        chip.alpha = 0
-        chip.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
-        view.addSubview(chip)
-
-        let destination = addressCapsule.center
-
-        UIView.animateKeyframes(withDuration: 0.5, delay: 0, options: [.calculationModeCubic]) {
-            // Appear where the finger was, at full size.
-            UIView.addKeyframe(withRelativeStartTime: 0, relativeDuration: 0.2) {
-                chip.alpha = 1
-                chip.transform = .identity
-            }
-            // Then fall into the capsule, shrinking to about its width so the
-            // last frame of the card and the capsule are the same size.
-            UIView.addKeyframe(withRelativeStartTime: 0.2, relativeDuration: 0.8) {
-                chip.center = destination
-                chip.transform = CGAffineTransform(scaleX: 0.7, y: 0.55)
-            }
-            // Gone before it arrives, or it would sit on top of the capsule for
-            // a frame looking like a second control.
-            UIView.addKeyframe(withRelativeStartTime: 0.75, relativeDuration: 0.25) {
-                chip.alpha = 0
-            }
-        } completion: { _ in
-            chip.removeFromSuperview()
-            // The capsule takes the hit, the way it would if you had pressed it.
-            self.addressCapsule.acknowledgeArrival()
-        }
-    }
-
     /// A live look at where a link goes, shown above its menu.
     ///
     /// Its own web view, and deliberately a bare one. Reusing the browser's
@@ -2426,6 +2345,12 @@ extension BrowserViewController: WKUIDelegate {
 
         let controller = UIViewController()
         controller.view = preview
+        // Smaller than the system's default, which fills most of the screen —
+        // at that size the preview stops being a glance at a link and becomes a
+        // page you are reading, with the menu pushed off underneath it. Two
+        // thirds of the width, and taller than wide so it still reads as a page.
+        let width = view.bounds.width * 0.62
+        controller.preferredContentSize = CGSize(width: width, height: width * 1.35)
 
         // The rules are compiled asynchronously and the preview is on screen
         // immediately, so this loads once they are attached rather than racing
@@ -2470,7 +2395,9 @@ extension BrowserViewController: WKUIDelegate {
 
         let configuration = UIContextMenuConfiguration(
             identifier: nil,
-            previewProvider: { [weak self] in self?.linkPreview(for: url) }
+            previewProvider: Settings.showsLinkPreview
+                ? { [weak self] in self?.linkPreview(for: url) }
+                : nil
         ) { [weak self] _ in
             guard let self else { return nil }
             return UIMenu(children: [
@@ -2496,12 +2423,18 @@ extension BrowserViewController: WKUIDelegate {
                     stashSessionState()
                     tabManager.addTab(url: url, select: false)
                     homeOverlay.setTabs(tabs, current: currentTabID)
-                    flyIntoCapsule(url)
                 },
                 UIMenu(options: .displayInline, children: [
                     UIAction(title: "Copy Link",
                              image: UIImage(systemName: "doc.on.doc")) { _ in
                         UIPasteboard.general.url = url
+                    },
+                    UIAction(title: Settings.showsLinkPreview ? "Hide Preview" : "Show Preview",
+                             image: UIImage(systemName: Settings.showsLinkPreview
+                                            ? "eye.slash" : "eye")) { _ in
+                        // Reads from the next long press onward — the menu now
+                        // on screen was configured before this was tapped.
+                        Settings.showsLinkPreview.toggle()
                     },
                     UIAction(title: "Share…",
                              image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in

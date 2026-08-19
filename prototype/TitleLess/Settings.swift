@@ -146,6 +146,16 @@ enum Settings {
         }
     }
 
+    /// Show a live preview of the destination above a link's menu.
+    ///
+    /// On by default, because a preview is the point of pressing a link you are
+    /// unsure about. Off, the menu appears on its own — faster to read, and it
+    /// loads nothing, which is the reason somebody would turn it off.
+    static var showsLinkPreview: Bool {
+        get { bool("settings.showsLinkPreview", default: true) }
+        set { d.set(newValue, forKey: "settings.showsLinkPreview") }
+    }
+
     /// Text that looks like a domain opens as a URL instead of a search.
     static var typedURLsOpenAsURLs: Bool {
         get { bool("settings.typedURLsAsURLs", default: true) }
