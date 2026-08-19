@@ -33,7 +33,7 @@ enum SupportInfo {
     /// Where feedback and bug reports go. An address is fine — the app opens a
     /// pre-addressed mail with the version filled in.
     /// e.g. "help@example.com"
-    static let contactEmail = "herdingbrowser@gmail.com"
+    static let contactEmail = "support.titleless@gmail.com"
 
     /// The privacy policy, hosted. The app also carries the policy offline, but
     /// App Store Connect wants a URL and will not accept the in-app copy.
