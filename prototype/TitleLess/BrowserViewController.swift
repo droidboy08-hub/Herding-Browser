@@ -2414,6 +2414,17 @@ extension BrowserViewController: WKUIDelegate {
                     // not reset.
                     self?.openTab(url: url, startsNewChain: false)
                 },
+                UIAction(title: "Open in New Private Tab",
+                         image: UIImage(systemName: "hand.raised")) { [weak self] _ in
+                    guard let self else { return }
+                    // Private browsing here is a whole profile, not a per-tab
+                    // flag — separate storage, separate history, separate web
+                    // view. So this enters that mode and opens the link inside
+                    // it, which is also what Safari does on iPhone. Already
+                    // private, the switch is a no-op and only the tab is new.
+                    setPrivateBrowsing(true)
+                    openTab(url: url)
+                },
                 UIAction(title: "Open in Background",
                          image: UIImage(systemName: "square.stack")) { [weak self] _ in
                     guard let self else { return }
@@ -2428,6 +2439,12 @@ extension BrowserViewController: WKUIDelegate {
                     UIAction(title: "Copy Link",
                              image: UIImage(systemName: "doc.on.doc")) { _ in
                         UIPasteboard.general.url = url
+                    },
+                    UIAction(title: "Copy Clean Link",
+                             image: UIImage(systemName: "sparkles")) { _ in
+                        // The same page, minus the campaign tags and click ids
+                        // that would otherwise follow whoever you send it to.
+                        UIPasteboard.general.url = url.withoutTrackingParameters
                     },
                     UIAction(title: Settings.showsLinkPreview ? "Hide Preview" : "Show Preview",
                              image: UIImage(systemName: Settings.showsLinkPreview

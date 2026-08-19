@@ -166,4 +166,62 @@ extension URL {
         guard let scheme = scheme?.lowercased() else { return false }
         return (scheme == "http" || scheme == "https") && host?.isEmpty == false
     }
+
+    /// The same link with its tracking parameters removed.
+    ///
+    /// A shared URL routinely carries a record of who shared it and where they
+    /// found it — a campaign tag, an ad click id, a per-recipient identifier.
+    /// None of it addresses the page; all of it follows whoever you send it to.
+    /// Stripping them gives the same page and a link that is only a link.
+    ///
+    /// Deliberately conservative. Only parameters known to be tracking are
+    /// removed, never anything unrecognised, because a query string is also how
+    /// pages say *which* item, page or search they are — dropping the wrong one
+    /// silently changes the destination. If nothing matches, the URL comes back
+    /// untouched.
+    var withoutTrackingParameters: URL {
+        guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false),
+              let items = components.queryItems, !items.isEmpty else { return self }
+
+        // Whole families: analytics platforms number their own parameters, and
+        // the prefix is the reliable part.
+        let prefixes = ["utm_", "hsa_", "pk_", "mtm_", "matomo_", "piwik_", "oly_"]
+        // Individually named click and campaign identifiers.
+        let exact: Set<String> = [
+            "gclid", "gclsrc", "dclid", "gbraid", "wbraid",   // Google Ads
+            "fbclid", "igshid", "igsh",                        // Meta
+            "msclkid",                                         // Microsoft
+            "twclid",                                          // X
+            "ttclid", "tt_medium", "tt_content",               // TikTok
+            "li_fat_id",                                       // LinkedIn
+            "yclid", "ysclid", "_openstat",                    // Yandex
+            "epik",                                            // Pinterest
+            "irclickid",                                       // Impact
+            "mc_cid", "mc_eid",                                // Mailchimp
+            "vero_id", "vero_conv",                            // Vero
+            "s_kwcid", "ef_id",                                // Adobe
+            "_ga", "_gl",                                      // cross-domain GA
+            "ref_src", "ref_url",                              // embeds
+            "spm", "scm",                                      // Alibaba
+        ]
+
+        // Names too short or too generic to strip everywhere, but unambiguous on
+        // the site that issues them. YouTube's `si` is the share token every
+        // copied YouTube link carries; two letters is far too little to act on
+        // anywhere else.
+        let host = (self.host ?? "").lowercased()
+        let hostScoped: Set<String> =
+            host.hasSuffix("youtube.com") || host.hasSuffix("youtu.be") ? ["si", "pp"] : []
+
+        let kept = items.filter { item in
+            let name = item.name.lowercased()
+            if exact.contains(name) || hostScoped.contains(name) { return false }
+            return !prefixes.contains { name.hasPrefix($0) }
+        }
+        guard kept.count != items.count else { return self }
+
+        // An empty list has to become nil, or the URL keeps a bare `?`.
+        components.queryItems = kept.isEmpty ? nil : kept
+        return components.url ?? self
+    }
 }
