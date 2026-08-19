@@ -1681,14 +1681,8 @@ final class BrowserViewController: UIViewController {
             self.homeOverlay.setTabs(self.tabs, current: self.currentTabID)
         }
         homeOverlay.setTabs(tabs, current: currentTabID)
-        // Only when the capsule is what was tapped — the swipe and the menu's
-        // New Tab have no rectangle for the box to come out of.
-        let origin = editingCurrentURL && !addressCapsule.isHidden
-            ? homeOverlay.convert(addressCapsule.bounds, from: addressCapsule)
-            : nil
         homeOverlay.present(over: hasLoadedPage, animated: true,
-                            editing: editingCurrentURL ? webView.url : nil,
-                            from: origin)
+                            editing: editingCurrentURL ? webView.url : nil)
     }
 
     /// Move to the tab either side of this one. Inert with one tab open.
