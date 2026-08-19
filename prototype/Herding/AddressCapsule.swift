@@ -117,6 +117,17 @@ final class AddressCapsule: UIView {
         button.showsMenuAsPrimaryAction = false      // menu on the press, tap stays free
         button.addAction(UIAction { [weak self] _ in self?.onMenuOpen?() },
                          for: .menuActionTriggered)
+        // Press feel.
+        //
+        // On 26 the glass is already `isInteractive`, but the button fills the
+        // capsule and takes every touch before the effect view sees one, so the
+        // glass never deforms. Rather than fight the hit-testing, the press is
+        // answered here — which also means 18, where there is no interactive
+        // glass to deform at all, feels the same rather than feeling dead.
+        button.addAction(UIAction { [weak self] _ in self?.setPressed(true) },
+                         for: [.touchDown, .touchDragEnter])
+        button.addAction(UIAction { [weak self] _ in self?.setPressed(false) },
+                         for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
         button.addAction(UIAction { [weak self] _ in self?.onTap?() },
                          for: .primaryActionTriggered)
         addSubview(button)
@@ -243,6 +254,20 @@ final class AddressCapsule: UIView {
     }
 
     // MARK: - Hiding while scrolling
+
+    /// Give under the finger, and come back.
+    ///
+    /// Small on purpose: this is a 32pt control, and the same 0.9 a large button
+    /// can take reads as a flinch at this size. The spring is what sells it —
+    /// linear scaling feels like a state change, a spring feels like a surface.
+    private func setPressed(_ pressed: Bool) {
+        UIView.animate(springDuration: pressed ? 0.22 : 0.34,
+                       bounce: pressed ? 0 : 0.28) {
+            self.glass.transform = pressed
+                ? CGAffineTransform(scaleX: 0.96, y: 0.9) : .identity
+            self.label.transform = self.glass.transform
+        }
+    }
 
     /// Slides out of the way, and back. Visibility only — the capsule never
     /// resizes on its way out, and its geometry never changes.

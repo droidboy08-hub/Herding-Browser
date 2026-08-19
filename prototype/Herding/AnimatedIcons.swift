@@ -563,11 +563,23 @@ enum GlassSurface {
     /// - Parameter interactive: whether it should react to touches. True for
     ///   things you press; false for a backdrop, which would otherwise wobble
     ///   when you tap the page behind it.
+    /// - Parameter fallback: the material used before iOS 26.
+    ///   `systemUltraThinMaterial` rather than `systemThinMaterial`: in light
+    ///   mode the thin material is mostly white, which turns every card into a
+    ///   pale slab and loses the wallpaper behind it. The ultra-thin one keeps
+    ///   what is behind legible through it, which is the point of the material
+    ///   and much nearer what the glass does on 26.
     static func makeView(radius: CGFloat,
                          interactive: Bool = false,
-                         fallback: UIBlurEffect.Style = .systemThinMaterial) -> UIVisualEffectView {
+                         fallback: UIBlurEffect.Style = .systemUltraThinMaterial) -> UIVisualEffectView {
         if #available(iOS 26.0, *) {
-            let glass = UIGlassEffect()
+            // `.clear` rather than `.regular`. The regular style is tuned to sit
+            // over arbitrary content and stay legible, which in a light
+            // interface means it fills with light — over a dark wallpaper that
+            // reads as a pale slab rather than as glass. The clear style keeps
+            // its transparency and lets what is behind actually come through,
+            // which is the material people mean when they say liquid glass.
+            let glass = UIGlassEffect(style: .clear)
             glass.isInteractive = interactive
             let view = UIVisualEffectView(effect: glass)
             // The effect draws its own edge and shading, so the view only has to
