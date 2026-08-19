@@ -419,7 +419,17 @@ final class HomeOverlayView: UIView {
     /// - Parameter editing: the current address, when the box was opened to
     ///   edit it rather than to start something new. Carried into the field and
     ///   selected, so typing replaces it and a return keeps you in this tab.
-    func present(over hasPage: Bool, animated: Bool, editing: URL? = nil) {
+    /// - Parameter from: the capsule's frame, in this view's coordinates, when
+    ///   the box was opened by tapping it.
+    ///
+    ///   Given one, the card grows out of that rectangle instead of rising from
+    ///   nowhere, so the capsule reads as *becoming* the box rather than being
+    ///   replaced by it. On iOS 26 the card is inside a `UIGlassContainerEffect`
+    ///   (see `build()`), and glass in a container reshapes fluidly as it
+    ///   resizes rather than simply scaling — which is what makes this worth
+    ///   doing rather than just a smaller starting transform.
+    func present(over hasPage: Bool, animated: Bool, editing: URL? = nil,
+                 from source: CGRect? = nil) {
         isHidden = false
         panel.historyChanged()      // whatever loaded while we were away
         solidBackdrop.alpha = hasPage ? 0 : 1
@@ -459,17 +469,34 @@ final class HomeOverlayView: UIView {
             self.shadowHost.alpha = 1
         }
         if animated {
-            let start = CGAffineTransform(translationX: 0, y: 26).scaledBy(x: 0.95, y: 0.95)
-            card.transform = start
-            shadowHost.transform = start
+            // Lay the card out now, or its frame is still zero and there is
+            // nothing to measure the starting transform against.
+            layoutIfNeeded()
+            card.transform = Self.transform(from: source, to: card.frame)
+                ?? CGAffineTransform(translationX: 0, y: 26).scaledBy(x: 0.95, y: 0.95)
+            shadowHost.transform = card.transform
             card.alpha = 0
             shadowHost.alpha = 0
-            UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.86,
-                           initialSpringVelocity: 0.5, options: [.curveEaseOut], animations: reveal)
+            UIView.animate(springDuration: 0.44, bounce: 0.18, animations: reveal)
         } else {
             reveal()
         }
         // Keyboard stays down until the user taps the field.
+    }
+
+    /// The transform that puts `target` exactly over `source`.
+    ///
+    /// Anchored on the centre because that is what a transform scales about, so
+    /// the translation is the gap between the two centres and the scale is the
+    /// ratio of their sizes. Returns nil when there is nothing to grow from, or
+    /// when either rectangle is empty — a divide by zero here would take the
+    /// card off screen rather than misplace it slightly.
+    private static func transform(from source: CGRect?, to target: CGRect) -> CGAffineTransform? {
+        guard let source, !source.isEmpty, target.width > 0, target.height > 0 else { return nil }
+        return CGAffineTransform(
+            translationX: source.midX - target.midX,
+            y: source.midY - target.midY
+        ).scaledBy(x: source.width / target.width, y: source.height / target.height)
     }
 
     func dismiss(animated: Bool) {
