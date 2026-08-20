@@ -16,7 +16,7 @@ form asks.
 | Field | Value |
 |---|---|
 | App name | **TitleLess** |
-| Bundle ID | `com.browser.Titleless` |
+| Bundle ID | `com.browser.TitleLess` |
 | Version | `1.0` |
 | Build number | `3` |
 | Devices | iPhone **and** iPad |
@@ -52,23 +52,23 @@ skipping ahead just fails later with a confusing error.
   year** — not the free Apple ID. Check at
   <https://developer.apple.com/account>. If it says "enroll", you are not a
   member yet and cannot submit anything until you join and pay.
-- [ ] **The bundle ID `com.browser.Titleless` is registered** in your developer
+- [ ] **The bundle ID `com.browser.TitleLess` is registered** in your developer
   account. Check at <https://developer.apple.com/account/resources/identifiers/list>.
   If it's not in the list, click **+**, choose **App IDs → App**, description
-  "TitleLess", Bundle ID **Explicit** = `com.browser.Titleless`, and Register.
+  "TitleLess", Bundle ID **Explicit** = `com.browser.TitleLess`, and Register.
   **This is the single most common thing to trip on — do it before you archive.**
 
 > ⚠️ **Note:** an earlier version of this project used a *different* bundle ID
 > (`com.nextbrowser.herding`). If you already created an app record in App Store
 > Connect under that old ID, you cannot rename it. You'll create a **new** app
-> record under `com.browser.Titleless` (Stage 3). The old one can be deleted or
+> record under `com.browser.TitleLess` (Stage 3). The old one can be deleted or
 > left alone.
 
 ---
 
 ## Stage 1 — Create the app record in App Store Connect
 
-*(Skip if you've already made one under `com.browser.Titleless`.)*
+*(Skip if you've already made one under `com.browser.TitleLess`.)*
 
 1. Go to <https://appstoreconnect.apple.com> and sign in.
 2. **Apps → the blue + → New App.**
@@ -77,7 +77,7 @@ skipping ahead just fails later with a confusing error.
    - **Name:** TitleLess *(this must be unique across the whole App Store — if
      it's taken, you'll be told, and you'll need a variant)*
    - **Primary language:** English (U.S.)
-   - **Bundle ID:** select `com.browser.Titleless` from the dropdown *(if it's
+   - **Bundle ID:** select `com.browser.TitleLess` from the dropdown *(if it's
      not in the dropdown, the Stage 0 registration step wasn't done — go back)*
    - **SKU:** any private code you like, e.g. `titleless-01` (users never see
      this)
@@ -231,7 +231,7 @@ Submission")
 Before you hit Submit, confirm:
 
 - [ ] Developer Program membership active ($99/yr paid)
-- [ ] Bundle ID `com.browser.Titleless` registered in your account
+- [ ] Bundle ID `com.browser.TitleLess` registered in your account
 - [ ] App record created under that exact bundle ID
 - [ ] Build uploaded from Xcode and finished processing
 - [ ] Build selected on the version page
@@ -249,7 +249,7 @@ Before you hit Submit, confirm:
 
 **Verified in the code / against Apple's docs** (safe to rely on):
 
-- Bundle ID is `com.browser.Titleless` in the built app; the project compiles.
+- Bundle ID is `com.browser.TitleLess` in the built app; the project compiles.
 - Support and Privacy URLs return HTTP 200 (live).
 - Privacy manifest declares no tracking and no data collection → "Data Not
   Collected" is the correct App Privacy answer.
@@ -263,7 +263,7 @@ Before you hit Submit, confirm:
 account, not the code):
 
 - That your Developer Program membership is active and paid.
-- That `com.browser.Titleless` is registered under *your* account.
+- That `com.browser.TitleLess` is registered under *your* account.
 - That signing works when you archive.
 - Anything about the uploaded build — no Release archive has been produced yet;
   every build during development was a simulator (Debug) build.
