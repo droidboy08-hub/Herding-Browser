@@ -33,7 +33,7 @@ enum FilterListCatalog {
         guard let url = Bundle.main.url(forResource: "filter-list-catalog", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode([CatalogFilterList].self, from: data) else {
-            print("[FilterListCatalog] filter-list-catalog.json missing or malformed")
+            log("[FilterListCatalog] filter-list-catalog.json missing or malformed")
             return []
         }
         return sortedForDevice(decoded)

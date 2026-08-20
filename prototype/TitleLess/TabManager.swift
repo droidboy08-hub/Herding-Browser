@@ -56,7 +56,7 @@ final class TabManager {
                 SnapshotStore.delete(for: tab.id)
                 store.remove(tabID: tab.id)
             }
-            print("[TabManager] dropped \(broken.count) tab(s) with no usable URL")
+            log("[TabManager] dropped \(broken.count) tab(s) with no usable URL")
         }
 
         for index in tabs.indices {

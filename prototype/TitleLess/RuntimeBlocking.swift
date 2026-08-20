@@ -140,7 +140,7 @@ actor AdblockEngineStore {
             for source in sources {
                 guard let url = source.bundleURL,
                       let text = try? String(contentsOf: url, encoding: .utf8) else {
-                    print("[Adblock] \(source.displayName) missing from the bundle")
+                    log("[Adblock] \(source.displayName) missing from the bundle")
                     continue
                 }
                 texts.append(text)
@@ -168,7 +168,7 @@ actor AdblockEngineStore {
                 // Serialization covers the filter data, not the scriptlets, so a
                 // restored engine still needs them loaded.
                 await Self.loadScriptlets(into: engine)
-                print("[Adblock] engine restored from cache")
+                log("[Adblock] engine restored from cache")
                 return engine
             }
 
@@ -177,11 +177,11 @@ actor AdblockEngineStore {
             // ones that strip ads out of a player's own response — are dropped
             // at parse time, silently.
             guard let engine = FilterEngine(rules: combined, trusted: true) else {
-                print("[Adblock] engine failed to build")
+                log("[Adblock] engine failed to build")
                 return nil
             }
             await Self.loadScriptlets(into: engine)
-            print("[Adblock] engine built from \(texts.count) list(s)")
+            log("[Adblock] engine built from \(texts.count) list(s)")
 
             if let cacheURL, let data = await engine.serialized() {
                 try? (stamp + data).write(to: cacheURL, options: .atomic)
@@ -218,7 +218,7 @@ actor AdblockEngineStore {
             guard let url = Bundle.main.url(forResource: name, withExtension: "json"),
                   let data = try? Data(contentsOf: url),
                   let entries = try? JSONSerialization.jsonObject(with: data) as? [Any] else {
-                print("[Adblock] \(name).json missing or malformed")
+                log("[Adblock] \(name).json missing or malformed")
                 continue
             }
             merged.append(contentsOf: entries)
@@ -226,11 +226,11 @@ actor AdblockEngineStore {
         guard !merged.isEmpty,
               let data = try? JSONSerialization.data(withJSONObject: merged),
               let json = String(data: data, encoding: .utf8) else {
-            print("[Adblock] no scriptlet resources to load")
+            log("[Adblock] no scriptlet resources to load")
             return
         }
         let loaded = await engine.useResources(json: json)
-        print(loaded ? "[Adblock] \(merged.count) scriptlet resources loaded"
+        log(loaded ? "[Adblock] \(merged.count) scriptlet resources loaded"
                      : "[Adblock] scriptlet resources rejected")
     }
 
@@ -514,7 +514,7 @@ final class CosmeticFilterHandler: NSObject, WKScriptMessageHandlerWithReply {
                                                 in: frame,
                                                 in: .page) { result in
                         if case .failure(let error) = result {
-                            print("[Adblock] scriptlet failed: \(error.localizedDescription)")
+                            log("[Adblock] scriptlet failed: \(error.localizedDescription)")
                         }
                     }
                 }

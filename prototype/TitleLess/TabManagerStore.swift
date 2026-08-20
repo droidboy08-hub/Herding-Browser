@@ -179,7 +179,7 @@ final class TabManagerStore {
             do {
                 try data.write(to: fileURL(for: id), options: .atomic)
             } catch {
-                print("[TabManagerStore] write failed for \(id): \(error.localizedDescription)")
+                log("[TabManagerStore] write failed for \(id): \(error.localizedDescription)")
             }
         }
         pendingTabs.removeAll()
@@ -244,7 +244,7 @@ final class TabManagerStore {
         try? FileManager.default.moveItem(
             at: legacyArchiveURL,
             to: directory.appendingPathComponent("session.json.migrated"))
-        print("[TabManagerStore] split \(archive.tabs.count) tabs out of the single-file archive")
+        log("[TabManagerStore] split \(archive.tabs.count) tabs out of the single-file archive")
     }
 
     /// Before any file store existed, tabs lived in UserDefaults. Read them once
@@ -265,7 +265,7 @@ final class TabManagerStore {
 
         defaults.removeObject(forKey: "session.tabs.v1")
         defaults.removeObject(forKey: "session.currentTab.v1")
-        print("[TabManagerStore] migrated \(tabs.count) tabs out of UserDefaults")
+        log("[TabManagerStore] migrated \(tabs.count) tabs out of UserDefaults")
 
         preserveAll(tabs, selected: selected)
         return (tabs, selected)

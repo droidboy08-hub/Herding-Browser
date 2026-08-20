@@ -103,7 +103,7 @@ final class BrowserProfile: Profile {
             guard FileManager.default.fileExists(atPath: from.path) else { continue }
             try? FileManager.default.moveItem(at: from, to: to)
         }
-        print("[Profile] adopted the pre-profile history database")
+        log("[Profile] adopted the pre-profile history database")
     }
 
     /// Before there was any database, history was a flat JSON array. Import it

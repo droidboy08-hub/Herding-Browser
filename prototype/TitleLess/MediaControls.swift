@@ -103,7 +103,7 @@ final class RemoteMediaController {
             // hardware controls.
             UIApplication.shared.beginReceivingRemoteControlEvents()
         } catch {
-            print("[Media] audio session activation failed: \(error.localizedDescription)")
+            log("[Media] audio session activation failed: \(error.localizedDescription)")
         }
     }
 
@@ -117,7 +117,7 @@ final class RemoteMediaController {
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         } catch {
-            print("[Media] audio session deactivation failed: \(error.localizedDescription)")
+            log("[Media] audio session deactivation failed: \(error.localizedDescription)")
         }
     }
 
@@ -165,9 +165,9 @@ final class RemoteMediaController {
             guard let webView = self?.webView else { return }
             webView.evaluateJavaScript(script) { result, error in
                 if let error {
-                    print("[Media] command failed: \(error.localizedDescription)")
+                    log("[Media] command failed: \(error.localizedDescription)")
                 } else if result as? Bool == false {
-                    print("[Media] no media element on the page")
+                    log("[Media] no media element on the page")
                 }
             }
         }

@@ -249,7 +249,7 @@ actor ContentBlocker {
             do {
                 lists.append(try await ruleList(for: source, level: level))
             } catch {
-                print("[ContentBlocker] \(source.displayName) unavailable: \(error.localizedDescription)")
+                log("[ContentBlocker] \(source.displayName) unavailable: \(error.localizedDescription)")
             }
         }
         return lists
@@ -322,7 +322,7 @@ actor ContentBlocker {
         let list = try await store.compileContentRuleList(forIdentifier: identifier,
                                                           encodedContentRuleList: json)
         guard let list else { throw BlockerError.compilationReturnedNothing(source) }
-        print("[ContentBlocker] compiled \(source.displayName) as \(identifier)")
+        log("[ContentBlocker] compiled \(source.displayName) as \(identifier)")
         return list
     }
 

@@ -272,7 +272,7 @@ final class SQLiteHistory {
                 }
                 return true
             }
-            print("[History] imported \(rows.count) entries from the old JSON store")
+            log("[History] imported \(rows.count) entries from the old JSON store")
         }, then: { [weak self] in
             self?.notifyChange()
         })

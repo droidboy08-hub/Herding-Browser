@@ -386,7 +386,7 @@ final class BrowserViewController: UIViewController {
             // against the retry budget — reset it and reload once.
             self.contentProcessCrashes = 0
             guard self.hasLoadedPage else { return }
-            print("[Nav] foreground — reloading page lost to a jettisoned content process")
+            log("[Nav] foreground — reloading page lost to a jettisoned content process")
             self.reloadCurrentPage()
         }
     }
@@ -482,7 +482,7 @@ final class BrowserViewController: UIViewController {
                   let visible = result as? Int, visible == 0,
                   // The page may have moved on while we were asking.
                   self.webView.url == restored else { return }
-            print("[Nav] restored session painted nothing — reloading \(restored)")
+            log("[Nav] restored session painted nothing — reloading \(restored)")
             // Reload rather than load: the back/forward list restored fine and is
             // worth keeping, it's only this page's content that never arrived.
             // From origin, because the stale cache is what left it blank.
@@ -1266,7 +1266,7 @@ final class BrowserViewController: UIViewController {
         controller.printFormatter = webView.viewPrintFormatter()
         controller.present(animated: true) { _, _, error in
             if let error {
-                Swift.print("[Print] failed: \(error.localizedDescription)")
+                log("[Print] failed: \(error.localizedDescription)")
             }
         }
     }
@@ -1984,7 +1984,7 @@ extension BrowserViewController: WKNavigationDelegate {
         // deliberately turned into a download or blocked by policy. The page
         // didn't fail; there's nothing to tell the user.
         guard !(ns.domain == "WebKitErrorDomain" && ns.code == 102) else { return }
-        print("[Nav] load failed: \(ns.code) \(ns.localizedDescription)")
+        log("[Nav] load failed: \(ns.code) \(ns.localizedDescription)")
         // A provisional failure leaves `webView.url` nil — nothing ever committed
         // — so take the address out of the error, which is the only place it
         // survives. Without it the error page has nothing to retry.
@@ -2003,20 +2003,20 @@ extension BrowserViewController: WKNavigationDelegate {
         // so wait until we're visible again.
         guard UIApplication.shared.applicationState == .active else {
             needsReloadOnForeground = true
-            print("[Nav] content process jettisoned while backgrounded — deferring reload")
+            log("[Nav] content process jettisoned while backgrounded — deferring reload")
             return
         }
 
         contentProcessCrashes += 1
         guard contentProcessCrashes <= maxCrashRecoveryAttempts else {
             // Reloading again would just crash again; stop and tell the user.
-            print("[Nav] content process crashed \(contentProcessCrashes)× — giving up")
+            log("[Nav] content process crashed \(contentProcessCrashes)× — giving up")
             showErrorPage(message: "This page used too much memory and stopped responding.")
             contentProcessCrashes = 0
             return
         }
 
-        print("[Nav] content process terminated (attempt \(contentProcessCrashes)) — reloading")
+        log("[Nav] content process terminated (attempt \(contentProcessCrashes)) — reloading")
         reloadCurrentPage()
     }
 
@@ -2054,7 +2054,7 @@ extension BrowserViewController: WKNavigationDelegate {
                   self.webView.url == failedURL else { return }
             let reason = HTTPURLResponse.localizedString(forStatusCode: status)
                 .capitalizingFirstLetter()
-            print("[Nav] \(status) with an empty body — showing an error page")
+            log("[Nav] \(status) with an empty body — showing an error page")
             self.showErrorPage(message: "\(reason) (\(status))", url: failedURL)
         }
     }
@@ -2099,7 +2099,7 @@ extension BrowserViewController: WKNavigationDelegate {
                     return
                 }
                 guard !self.webView.isLoading, self.webView.url == url else { return }
-                print("[Nav] page finished but painted nothing — reloading \(url)")
+                log("[Nav] page finished but painted nothing — reloading \(url)")
                 self.blankRecoveryURL = url
                 self.webView.reloadFromOrigin()
             }
@@ -2217,7 +2217,7 @@ extension BrowserViewController: WKNavigationDelegate {
             if handoff.contains(scheme), navigationAction.navigationType == .linkActivated {
                 UIApplication.shared.open(url)
             } else {
-                print("[Nav] blocked external scheme: \(scheme)")
+                log("[Nav] blocked external scheme: \(scheme)")
             }
             return
         }
@@ -2526,7 +2526,7 @@ extension BrowserViewController: WKUIDelegate {
         // With the redirect blocker off, a pop-up is a pop-up. With it on, only
         // the two cases above get through.
         guard sameSite || signIn || !Settings.blockRedirectPages else {
-            print("[Nav] redirect blocked: \(url.host ?? url.absoluteString)")
+            log("[Nav] redirect blocked: \(url.host ?? url.absoluteString)")
             showRedirectBlockedNotice()
             return nil
         }

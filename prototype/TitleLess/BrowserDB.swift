@@ -38,7 +38,7 @@ final class SQLiteConnection {
     init?(path: String) {
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
         guard sqlite3_open_v2(path, &handle, flags, nil) == SQLITE_OK else {
-            print("[BrowserDB] open failed: \(errorMessage)")
+            log("[BrowserDB] open failed: \(errorMessage)")
             return nil
         }
         // WAL lets the panel read while a navigation is still writing. An
@@ -71,7 +71,7 @@ final class SQLiteConnection {
         defer { sqlite3_finalize(stmt) }
         let result = sqlite3_step(stmt)
         guard result == SQLITE_DONE || result == SQLITE_ROW else {
-            print("[BrowserDB] step failed (\(sql)): \(errorMessage)")
+            log("[BrowserDB] step failed (\(sql)): \(errorMessage)")
             return false
         }
         return true
@@ -107,7 +107,7 @@ final class SQLiteConnection {
     private func prepare(_ sql: String, args: [Any?]) -> OpaquePointer? {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
-            print("[BrowserDB] prepare failed (\(sql)): \(errorMessage)")
+            log("[BrowserDB] prepare failed (\(sql)): \(errorMessage)")
             return nil
         }
         for (offset, arg) in args.enumerated() {
@@ -122,7 +122,7 @@ final class SQLiteConnection {
             case let value as Bool:   sqlite3_bind_int(stmt, index, value ? 1 : 0)
             case let value as Date:   sqlite3_bind_double(stmt, index, value.timeIntervalSince1970)
             default:
-                print("[BrowserDB] unsupported bind type at \(index): \(String(describing: arg))")
+                log("[BrowserDB] unsupported bind type at \(index): \(String(describing: arg))")
                 sqlite3_bind_null(stmt, index)
             }
         }
@@ -174,13 +174,13 @@ final class BrowserDB {
         let current = connection.userVersion
         if current == 0 {
             guard schema.create(connection) else {
-                print("[BrowserDB] schema create failed: \(connection.errorMessage)")
+                log("[BrowserDB] schema create failed: \(connection.errorMessage)")
                 return
             }
             connection.userVersion = schema.version
         } else if current < schema.version {
             guard schema.update(connection, from: current) else {
-                print("[BrowserDB] schema update failed: \(connection.errorMessage)")
+                log("[BrowserDB] schema update failed: \(connection.errorMessage)")
                 return
             }
             connection.userVersion = schema.version

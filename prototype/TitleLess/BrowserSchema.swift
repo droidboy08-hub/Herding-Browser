@@ -121,7 +121,7 @@ struct BrowserSchema: Schema {
         for index in createIndexes {
             ok = db.executeChange(index) && ok
         }
-        print("[BrowserSchema] migrated v1 places/visits to v2 history_items/history_visits")
+        log("[BrowserSchema] migrated v1 places/visits to v2 history_items/history_visits")
         return ok
     }
 }
