@@ -205,7 +205,7 @@ enum WallpaperStore {
 
     /// Which built-in gradient is chosen, when one is.
     static var presetID: String? {
-        get { UserDefaults.standard.string(forKey: "settings.wallpaperPreset") ?? "ink" }
+        get { UserDefaults.standard.string(forKey: "settings.wallpaperPreset") ?? "system" }
         set { UserDefaults.standard.set(newValue, forKey: "settings.wallpaperPreset") }
     }
 
@@ -227,7 +227,16 @@ enum WallpaperStore {
     /// backdrop, which is the one combination that cannot be made to work by
     /// adjusting the glass.
     static func paired(with mode: Settings.AppearanceMode) -> WallpaperPreset {
-        mode == .light ? .system : WallpaperPreset.preset(id: "ink") ?? .system
+        switch mode {
+        case .dark:
+            return WallpaperPreset.preset(id: "ink") ?? .system
+        case .light, .system:
+            // The Default preset is built from `systemBackground`, which is a
+            // dynamic colour — so it is already light in a light interface and
+            // dark in a dark one. Following the system needs no observer,
+            // because the wallpaper follows it on its own.
+            return .system
+        }
     }
 
     /// Follow the appearance, unless the wallpaper is something the user chose

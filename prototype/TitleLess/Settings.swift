@@ -255,11 +255,10 @@ enum Settings {
                let mode = AppearanceMode(rawValue: raw) {
                 return mode
             }
-            // Dark out of the box, and dark for anyone upgrading from the old
-            // "force dark" bool whichever way they had it. The browser is
-            // mostly a frame around somebody else's page, and a dark frame is
-            // the one that disappears around it.
-            return .dark
+            // Follow the phone, unless told otherwise. Anyone upgrading from
+            // the old "force dark" bool and who had it *on* keeps dark; having
+            // it off always meant following the system, which is this.
+            return d.bool(forKey: "settings.darkMode") ? .dark : .system
         }
         set {
             d.set(newValue.rawValue, forKey: appearanceModeKey)
