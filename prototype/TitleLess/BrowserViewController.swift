@@ -1408,6 +1408,7 @@ final class BrowserViewController: UIViewController {
             alert.popoverPresentationController?.sourceRect = homeOverlay.panel.bounds
             present(alert, animated: true)
         }
+        homeOverlay.panel.onClearHistory = { [weak self] in self?.forgetNavigationHistory() }
         homeOverlay.panel.onClearWebsiteData = { [weak self] in
             // Clear the *profile's* store — clearing `.default()` from a private
             // profile would wipe the wrong session's data.
@@ -1478,6 +1479,29 @@ final class BrowserViewController: UIViewController {
 
     /// Replace the web view with one built for the current profile, keeping the
     /// chrome that sits around it.
+    /// Throw away every back/forward list, not just the history database.
+    ///
+    /// Clearing history used to empty the list in the panel and nothing else,
+    /// while the addresses stayed in two other places: each tab's stored
+    /// `interactionState`, which is the whole back/forward list written to disk,
+    /// and the live web view's own list in memory. So after clearing you could
+    /// still swipe back through the pages you had just forgotten, and they
+    /// survived a relaunch. "Every page you have visited, forgotten" is what the
+    /// confirmation promises, and it has to be true.
+    ///
+    /// The live list cannot be emptied — WebKit exposes no way to — so the web
+    /// view is replaced, which is the only thing that drops it. The page you are
+    /// on stays; only the trail behind it goes.
+    private func forgetNavigationHistory() {
+        for tab in tabs {
+            tabManager.setSessionState(nil, for: tab.id)
+        }
+
+        guard hasLoadedPage, let current = webView.url, current.isWebPage else { return }
+        rebuildWebView()
+        webView.load(pageRequest(current))
+    }
+
     private func rebuildWebView() {
         // Drop every observation first: they hold the old web view, and a KVO
         // callback arriving mid-swap would apply the old page's state to the new

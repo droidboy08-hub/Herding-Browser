@@ -29,6 +29,9 @@ final class StartPanelView: UIView {
     var onCloseTab: ((UUID) -> Void)?
     var onCloseAllTabs: (() -> Void)?
     var onClearWebsiteData: (() -> Void)?
+    /// Clearing history has to reach past the database. See
+    /// `forgetNavigationHistory` in the browser.
+    var onClearHistory: (() -> Void)?
     var onOpenDownload: ((DownloadItem) -> Void)?
     var onShowDownloads: (() -> Void)?
     /// Both need a view controller to present from, which a view isn't.
@@ -1063,6 +1066,9 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                         self?.history?.clear()
                         self?.entries = []
                         self?.table.reloadData()
+                        // The list is only half of it — the tabs' back/forward
+                        // lists hold the same addresses.
+                        self?.onClearHistory?()
                     }
                 case "Clear Website Data":
                     confirm(title, "Cookies, caches and local storage for every site. "
