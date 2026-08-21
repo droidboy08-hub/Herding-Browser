@@ -299,8 +299,35 @@ final class BrowserViewController: UIViewController {
         homeOverlay.panel.settingsChanged()
     }
 
+    /// Show the welcome once, and only to somebody who has never used this app.
+    ///
+    /// The flag alone is not enough. A key that defaults to false is false for
+    /// *everyone* the first time this version runs, so shipping it that way
+    /// would greet existing users on update — which is the one audience that
+    /// already knows the gestures.
+    ///
+    /// So an install with tabs or history behind it is treated as an upgrade
+    /// and quietly marked as seen. Somebody who installed an earlier build and
+    /// never opened a page will see it, which is the right answer anyway.
+    private func presentWelcomeIfFirstRun() {
+        guard !Settings.hasSeenWelcome else { return }
+
+        let hasUsedTheAppBefore = !tabs.isEmpty || !profile.history.recentEntries().isEmpty
+        guard !hasUsedTheAppBefore else {
+            Settings.hasSeenWelcome = true
+            return
+        }
+
+        let welcome = WelcomeViewController()
+        // No swipe-to-dismiss: the button is what records it as seen, and a
+        // screen dismissed around that would come back on the next launch.
+        welcome.isModalInPresentation = true
+        present(welcome, animated: false)
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        presentWelcomeIfFirstRun()
         // The window doesn't exist yet in `viewDidLoad`, so the style set there
         // lands on nothing.
         applyAppearance()

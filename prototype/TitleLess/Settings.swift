@@ -146,6 +146,12 @@ enum Settings {
         }
     }
 
+    /// Whether the one-time welcome has been shown.
+    static var hasSeenWelcome: Bool {
+        get { bool("settings.hasSeenWelcome", default: false) }
+        set { d.set(newValue, forKey: "settings.hasSeenWelcome") }
+    }
+
     /// Show a live preview of the destination above a link's menu.
     ///
     /// On by default, because a preview is the point of pressing a link you are
