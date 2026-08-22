@@ -23,7 +23,18 @@ final class BrowserViewController: UIViewController {
     private var progressTimer: Timer?
     /// Whether the start box was opened to edit this tab's address. See
     /// `revealHome(editingCurrentURL:)`.
-    private var editingCurrentTab = false
+    /// Whether the next address committed from the box opens a new tab.
+    ///
+    /// False is the common case and therefore the default: typing an address
+    /// goes into the tab you are looking at. Only the two controls that say
+    /// "new tab" — the + in the tab list and New Tab in the page menu — set it,
+    /// and it is cleared the moment it is used or the box closes.
+    ///
+    /// It used to be the other way round: every route opened a new tab unless
+    /// it opted out, so a control that forgot to set the flag inherited whatever
+    /// the previous one left behind. The + forgot, which is why it stopped
+    /// making tabs at all.
+    private var nextSubmitOpensNewTab = false
     private var scrollObs: NSKeyValueObservation?
     private var zoomObs: NSKeyValueObservation?
     private var swipeBindingObserver: NSObjectProtocol?
@@ -929,7 +940,9 @@ final class BrowserViewController: UIViewController {
         // panel it puts on screen.
         let newTab = UIAction(title: "New Tab",
                               image: UIImage(systemName: "plus.square.on.square")) { [weak self] _ in
-            self?.revealHome()
+            guard let self else { return }
+            nextSubmitOpensNewTab = true
+            revealHome()
         }
 
         let downloads = UIAction(title: "Downloads",
@@ -1387,11 +1400,11 @@ final class BrowserViewController: UIViewController {
         ) { [weak self] _ in
             self?.configureSwipeDownBehaviour()
         }
+        homeOverlay.onStartNewTab = { [weak self] in self?.nextSubmitOpensNewTab = true }
         homeOverlay.onDismissed = { [weak self] in
-            // Whatever closed the box, the next opening decides afresh whether
-            // it is an edit — a stale flag would send an unrelated address into
-            // this tab.
-            self?.editingCurrentTab = false
+            // Whatever closed the box, the next opening decides afresh where the
+            // address goes — a stale flag would put it in the wrong tab.
+            self?.nextSubmitOpensNewTab = false
             guard let self, reloadWhenOverlayCloses else { return }
             reloadWhenOverlayCloses = false
             guard hasLoadedPage, webView.url != nil else { return }
@@ -1779,7 +1792,6 @@ final class BrowserViewController: UIViewController {
     private func revealHome(editingCurrentURL: Bool) {
         addressCapsule.isHidden = true
         setNeedsUpdateOfHomeIndicatorAutoHidden()
-        editingCurrentTab = editingCurrentURL
         // Snapshot the page we're leaving so its grid card shows a live preview.
         captureSnapshot { [weak self] in
             guard let self else { return }
@@ -1876,19 +1888,22 @@ final class BrowserViewController: UIViewController {
         // highest — but WebKit reports them as `.other`, so flag it here.
         nextNavigationIsTyped = true
 
-        // An edit of the address you were already on stays in this tab. Every
-        // other route into the box — the swipe, New Tab, the tab list's + —
-        // opens a new one, which is what the box did unconditionally before.
-        if editingCurrentTab {
-            editingCurrentTab = false
-            hasLoadedPage = true
-            homeOverlay.dismiss(animated: true)
-            // Shown by `didCommit`, once there is an origin to show.
-            tabManager.updateSelectedTab(url: url)
-            webView.load(pageRequest(url))
+        // A new tab only when something asked for one, or when there is no tab
+        // to load into — the second case is a first launch, where every address
+        // has to make the tab it opens in.
+        let wantsNewTab = nextSubmitOpensNewTab
+        nextSubmitOpensNewTab = false
+
+        guard !wantsNewTab, hasLoadedPage, tabManager.selectedTab != nil else {
+            openTab(url: url)
             return
         }
-        openTab(url: url)
+
+        hasLoadedPage = true
+        homeOverlay.dismiss(animated: true)
+        // Shown by `didCommit`, once there is an origin to show.
+        tabManager.updateSelectedTab(url: url)
+        webView.load(pageRequest(url))
     }
 
     /// Open a URL in a new tab and make it current.

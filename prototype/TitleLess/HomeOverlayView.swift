@@ -12,6 +12,9 @@ final class HomeOverlayView: UIView {
     /// while the box was still up — a reload, for instance.
     var onDismissed: (() -> Void)?
     var onSelectTab: ((UUID) -> Void)?
+    /// The + in the tab list was tapped. The browser decides what that means for
+    /// the next address committed — see `nextSubmitOpensNewTab`.
+    var onStartNewTab: (() -> Void)?
     var onCloseTab: ((UUID) -> Void)?
     var onHistory: (() -> Void)?
     var onSettings: (() -> Void)?
@@ -153,9 +156,16 @@ final class HomeOverlayView: UIView {
         panel.onClose = { [weak self] in self?.hidePanel() }
         // Closing the list and opening the keyboard *is* the new tab: there is no
         // blank page to show, so the tab starts where the address does.
+        //
+        // The field is emptied on the way. Home may have been opened from the
+        // capsule, which fills it with the current address — and a new tab that
+        // arrives pre-filled with the page you were already on is not a new tab.
         panel.onNewTab = { [weak self] in
-            self?.hidePanel()
-            self?.field.becomeFirstResponder()
+            guard let self else { return }
+            hidePanel()
+            field.text = ""
+            field.becomeFirstResponder()
+            onStartNewTab?()
         }
         stack.addArrangedSubview(panel)
 
