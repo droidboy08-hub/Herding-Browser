@@ -160,14 +160,6 @@
   "langs": []
  },
  {
-  "id": "78672887-A098-4D2C-B0CB-A3DEC4834DA7",
-  "title": "Paywall blocker",
-  "desc": "Bypass Paywalls Clean Filters",
-  "url": "https://gitflic.ru/project/magnolia1234/bypass-paywalls-clean-filters/blob/raw?file=bpc-paywall-filter.txt",
-  "defaultEnabled": false,
-  "langs": []
- },
- {
   "id": "F61D6B7B-4110-4EA4-9C81-38FB4CE90AEC",
   "title": "Porn blocker",
   "desc": "Blocklists Anti-Porn",
