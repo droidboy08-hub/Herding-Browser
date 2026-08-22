@@ -51,8 +51,12 @@ enum Settings {
 
     // MARK: Tabs
     /// Persist the user's choice of list vs grid view for tabs.
+    ///
+    /// Grid to begin with. A tab is recognised by what the page looked like far
+    /// faster than by reading its title, and the grid is the view that shows
+    /// that. The row of text is there for anyone who would rather scan names.
     static var tabsInGridView: Bool {
-        get { bool("settings.tabsInGridView", default: false) }
+        get { bool("settings.tabsInGridView", default: true) }
         set { d.set(newValue, forKey: "settings.tabsInGridView") }
     }
 
