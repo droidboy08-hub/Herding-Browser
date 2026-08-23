@@ -192,6 +192,26 @@ enum Settings {
         set { d.set(newValue, forKey: "settings.blockRedirectPages") }
     }
 
+    /// Ask for Face ID, Touch ID or the passcode before entering private
+    /// browsing.
+    ///
+    /// Guards the way *in*, not the way out. Leaving private browsing reveals
+    /// nothing, and a lock on the exit would only be a lock on your own phone.
+    ///
+    /// On by default, which is the same call Safari makes. The cost of it being
+    /// on when you didn't need it is one glance; the cost of it being off when
+    /// you did is the whole point of the mode. It also costs nothing to find:
+    /// the prompt is the first thing anyone sees on tapping Private, and the
+    /// switch that turns it off is one screen away.
+    ///
+    /// A phone with no passcode set cannot honour this. Rather than sealing
+    /// private browsing off on such a device, `BiometricGate` lets the request
+    /// through and the settings row is hidden — see the reasoning there.
+    static var requirePrivateAuth: Bool {
+        get { bool("settings.requirePrivateAuth", default: true) }
+        set { d.set(newValue, forKey: "settings.requirePrivateAuth") }
+    }
+
     /// Upgrade http:// navigations to https://.
     static var httpsOnly: Bool {
         get { bool("settings.httpsOnly", default: false) }

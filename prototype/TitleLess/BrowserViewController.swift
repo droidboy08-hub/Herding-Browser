@@ -1341,10 +1341,14 @@ final class BrowserViewController: UIViewController {
         homeOverlay.panel.onOpenDownload = { [weak self] item in self?.presentDownload(item) }
         homeOverlay.panel.onTogglePrivate = { [weak self] on in
             guard let self else { return }
-            setPrivateBrowsing(on)
-            // Reflect what actually happened, rather than letting the button
-            // assume the switch went through.
-            homeOverlay.panel.isPrivateBrowsing = profile.isPrivate
+            guard on else {
+                setPrivateBrowsing(false)
+                // Reflect what actually happened, rather than letting the
+                // button assume the switch went through.
+                homeOverlay.panel.isPrivateBrowsing = profile.isPrivate
+                return
+            }
+            enterPrivateBrowsing()
         }
         homeOverlay.panel.onShowContentFiltering = { [weak self] in self?.presentContentFiltering() }
         // Favourites: open one, keep the page you're on, or drop one.
@@ -1489,6 +1493,39 @@ final class BrowserViewController: UIViewController {
     /// switch, which is the property that makes it private at all.
     ///
     /// The tab box stays open across the switch, showing the other set of tabs.
+    /// Enter private browsing, asking for Face ID first if that is switched on.
+    ///
+    /// The way in only. Leaving private browsing reveals nothing that was
+    /// hidden, so a prompt on the way out would be a lock on your own phone and
+    /// nothing else.
+    ///
+    /// Refusal is silent and leaves the button where it was — the prompt itself
+    /// already said what was being asked, and a second message saying it didn't
+    /// happen tells nobody anything. On a device with no passcode set there is
+    /// no secret to check against, and `BiometricGate` lets the caller through
+    /// rather than sealing the mode off; the setting is hidden there too.
+    private func enterPrivateBrowsing(then completion: (() -> Void)? = nil) {
+        guard !profile.isPrivate else { completion?(); return }
+        guard Settings.requirePrivateAuth else {
+            setPrivateBrowsing(true)
+            homeOverlay.panel.isPrivateBrowsing = profile.isPrivate
+            completion?()
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let granted = await BiometricGate.authenticate(
+                reason: "Unlock private browsing.")
+            guard granted else {
+                homeOverlay.panel.isPrivateBrowsing = profile.isPrivate
+                return
+            }
+            setPrivateBrowsing(true)
+            homeOverlay.panel.isPrivateBrowsing = profile.isPrivate
+            completion?()
+        }
+    }
+
     private func setPrivateBrowsing(_ on: Bool) {
         guard on != profile.isPrivate else { return }
 
@@ -2536,8 +2573,11 @@ extension BrowserViewController: WKUIDelegate {
                     // view. So this enters that mode and opens the link inside
                     // it, which is also what Safari does on iPhone. Already
                     // private, the switch is a no-op and only the tab is new.
-                    setPrivateBrowsing(true)
-                    openTab(url: url)
+                    //
+                    // Through the same gate as the Private button: this is the
+                    // other door into the mode, and a lock with a second way in
+                    // is not a lock.
+                    enterPrivateBrowsing { [weak self] in self?.openTab(url: url) }
                 },
                 UIAction(title: "Open in Background",
                          image: UIImage(systemName: "square.stack")) { [weak self] _ in

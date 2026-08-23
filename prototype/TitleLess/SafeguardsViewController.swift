@@ -31,7 +31,17 @@ final class SafeguardsViewController: UIViewController {
     private let table = UITableView(frame: .zero, style: .insetGrouped)
 
     private var sections: [Section] {
-        [
+        // Hidden outright when the device has no passcode set, rather than
+        // shown as a switch that cannot do anything. There is nothing to check
+        // against on such a device, so the row would be a promise the browser
+        // could not keep. Apple hides its own for the same reason.
+        let privacyRows: [Row] = BiometricGate.isAvailable
+            ? [.toggle("Require \(BiometricGate.displayName) for Private",
+                       get: { Settings.requirePrivateAuth },
+                       set: { Settings.requirePrivateAuth = $0 })]
+            : []
+
+        return [
             Section(title: nil, rows: [
                 .toggle("Block fingerprinting",
                         get: { Settings.blockFingerprinting },
@@ -60,7 +70,7 @@ final class SafeguardsViewController: UIViewController {
                 .toggle("HTTPS-Only Mode",
                         get: { Settings.httpsOnly },
                         set: { Settings.httpsOnly = $0 }),
-            ]),
+            ] + privacyRows),
             Section(title: nil, rows: [
                 .action("Content Filtering"),
                 .action("Passwords"),
