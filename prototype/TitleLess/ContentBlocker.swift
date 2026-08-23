@@ -35,6 +35,10 @@ enum FilterListSource: String, CaseIterable {
     /// notably the mobile hosts of video sites, whose rules upstream only cover
     /// the desktop host.
     case appExtras = "app-extras"
+    /// The same idea as `appExtras`, but for rules the community lists leave
+    /// alone on purpose — so they are held back to the level that has opted
+    /// into blocking more than the defaults do.
+    case appExtrasStrict = "app-extras-strict"
 
     var fileName: String { rawValue }
 
@@ -49,6 +53,7 @@ enum FilterListSource: String, CaseIterable {
         case .cookieNotices:       return "Cookie Notices"
         case .siteFixes:           return "Site Fixes"
         case .appExtras:           return "App Extras"
+        case .appExtrasStrict:     return "App Extras (Aggressive)"
         }
     }
 
@@ -64,7 +69,8 @@ enum FilterListSource: String, CaseIterable {
         case .easyprivacy,                    // trackers from standard up
              .cnameTrackers:
             return .standard
-        case .firstPartyTrackers:                // first-party only at the top level
+        case .firstPartyTrackers,                // first-party only at the top level
+             .appExtrasStrict:                   // and our own additions to it
             return .aggressive
         case .cookieNotices:             // any level, but only if asked for
             return .basic
@@ -90,6 +96,8 @@ enum FilterListSource: String, CaseIterable {
             return "Exceptions — puts back what the block lists break."
         case .appExtras:
             return "Rules written for this browser, mostly for mobile video sites."
+        case .appExtrasStrict:
+            return "Extra ad and tracker hosts the general lists leave alone. Aggressive only."
         case .cookieNotices:
             return "Hides cookie-consent banners. Doesn't answer them for you."
         }
@@ -150,7 +158,7 @@ enum FilterListSource: String, CaseIterable {
         // this app ships silently did not apply to the most common way an ad
         // arrives.
         case .easylist, .cnameTrackers, .supplementalAds, .mobileSpecific,
-             .appExtras, .firstPartyTrackers:
+             .appExtras, .appExtrasStrict, .firstPartyTrackers:
             return true
         // Cosmetic and exception lists stay runtime-only. Converting those
         // produces `css-display-none` entries WebKit applies everywhere, which

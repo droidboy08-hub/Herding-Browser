@@ -43,3 +43,23 @@ m.youtube.com##ytm-companion-slot-renderer
 ! The domains rotate constantly, which is why the general lists lag behind and
 ! why these are kept here rather than waited for upstream.
 ||topperanlases.com^
+
+! ---------------------------------------------------------------------------
+! TikTok / ByteDance ad and telemetry hosts.
+!
+! Upstream covers the analytics pair — `||analytics.tiktok.com^` and its `-sg`
+! twin — as plain host rules, and stops there. These five have no rule in any
+! bundled list.
+!
+! Pure endpoints, blocked outright the way their analytics siblings are. None
+! of them is ever a page you visit; they exist to be called.
+||ads-api.tiktok.com^
+||ads-sg.tiktok.com^
+||log.byteoversea.com^
+
+! These two are also real websites — `ads.tiktok.com` is the Ads Manager
+! sign-in, and `business-api` its developer console. `$third-party` keeps the
+! rule to subresource loads from other sites, so blocking the ad call cannot
+! also stop somebody navigating to the tool itself.
+||ads.tiktok.com^$third-party
+||business-api.tiktok.com^$third-party
