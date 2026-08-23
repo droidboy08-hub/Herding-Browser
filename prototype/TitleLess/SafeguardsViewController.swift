@@ -64,7 +64,7 @@ final class SafeguardsViewController: UIViewController {
                             NotificationCenter.default.post(name: .contentBlockingChanged,
                                                             object: nil)
                         }),
-                .toggle("Block pop-ups and redirects",
+                .toggle("Always block pop-ups",
                         get: { Settings.blockRedirectPages },
                         set: { Settings.blockRedirectPages = $0 }),
                 .toggle("HTTPS-Only Mode",

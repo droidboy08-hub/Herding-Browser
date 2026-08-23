@@ -38,6 +38,22 @@ final class BrowserViewController: UIViewController {
     /// Set while a pop-up's web view is being adopted as a tab, so the
     /// selection callback does not load a page WebKit is already loading.
     private var adoptingPopup = false
+    /// Sites the user has let through this session by tapping Open Anyway.
+    ///
+    /// Keyed on the site doing the opening, not on where it wants to go, which
+    /// is how the same permission works in Chrome and Firefox: the answer being
+    /// remembered is "this site may open windows", and a directory whose every
+    /// link opens a new tab would otherwise ask again on every link — the exact
+    /// complaint this whole change exists to fix.
+    ///
+    /// Held in memory and never written down. A permission granted in passing
+    /// to get one link open should not still be granted next week, and a list
+    /// of the sites somebody allowed pop-ups on is a browsing record like any
+    /// other. Cleared with the profile, so nothing crosses into or out of
+    /// private browsing.
+    private var popupAllowedHosts: Set<String> = []
+    private weak var popupNotice: UIView?
+    private var popupNoticeDismissal: DispatchWorkItem?
     private var scrollObs: NSKeyValueObservation?
     private var zoomObs: NSKeyValueObservation?
     private var swipeBindingObserver: NSObjectProtocol?
@@ -1252,38 +1268,78 @@ final class BrowserViewController: UIViewController {
         present(sheet, animated: true)
     }
 
-    /// Say that a page was refused.
+    /// Say that a pop-up was refused — and, when the refusal was the browser's
+    /// own caution rather than the user's standing instruction, offer it.
     ///
-    /// A blocker this blunt has to be visible or it is indistinguishable from a
+    /// A refusal this blunt has to be visible or it is indistinguishable from a
     /// broken site: a link that does nothing, silently, is the same experience
-    /// as a bug. Told what happened, someone whose bank really did need that
-    /// window knows which switch to reach for.
+    /// as a bug.
     ///
-    /// Sits above the page and below the refresh button, and is not tappable —
-    /// it interrupts nothing.
-    private func showRedirectBlockedNotice() {
-        let plate = GlassSurface.makeView(radius: 18, fallback: .systemThickMaterial)
+    /// Two shapes, from the same builder:
+    ///
+    /// - **Told.** `onOpen` nil — "Always block pop-ups" is on, the user has
+    ///   already given their answer, and there is nothing to ask. Not tappable,
+    ///   gone in under two seconds.
+    /// - **Asked.** `onOpen` set — the default. Names the destination and
+    ///   offers one button, because naming it is what makes the tap a decision
+    ///   rather than a reflex. Dwells long enough to be read and reached.
+    ///
+    /// One at a time. A page calling `window.open` in a loop would otherwise
+    /// stack plates up the screen, which is both ugly and the beginnings of a
+    /// way to make somebody tap the wrong one.
+    private func showPopupNotice(destination host: String?, onOpen: (() -> Void)?) {
+        popupNotice?.removeFromSuperview()
+        popupNoticeDismissal?.cancel()
+
+        let plate = GlassSurface.makeView(radius: 22, fallback: .systemThickMaterial)
         plate.translatesAutoresizingMaskIntoConstraints = false
-        plate.isUserInteractionEnabled = false
+        plate.isUserInteractionEnabled = onOpen != nil
         plate.alpha = 0
 
         let label = UILabel()
-        label.text = "Redirect blocked"
+        label.text = onOpen == nil ? "Pop-up blocked" : (host ?? "Pop-up blocked")
         label.font = .systemFont(ofSize: 14, weight: .medium)
         label.textColor = .label
-        label.translatesAutoresizingMaskIntoConstraints = false
-        plate.contentView.addSubview(label)
+        label.lineBreakMode = .byTruncatingMiddle
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
+        let row = UIStackView(arrangedSubviews: [label])
+        row.axis = .horizontal
+        row.spacing = 14
+        row.alignment = .center
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        if let onOpen {
+            let open = UIButton(type: .system)
+            open.setTitle("Open Anyway", for: .normal)
+            open.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+            open.setContentHuggingPriority(.required, for: .horizontal)
+            open.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                dismissPopupNotice()
+                onOpen()
+            }, for: .touchUpInside)
+            row.addArrangedSubview(open)
+        }
+
+        plate.contentView.addSubview(row)
         view.addSubview(plate)
         view.bringSubviewToFront(addressCapsule)
+        popupNotice = plate
+
         NSLayoutConstraint.activate([
             plate.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             plate.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor,
                                           constant: -24),
-            plate.heightAnchor.constraint(equalToConstant: 38),
-            label.leadingAnchor.constraint(equalTo: plate.contentView.leadingAnchor, constant: 16),
-            label.trailingAnchor.constraint(equalTo: plate.contentView.trailingAnchor, constant: -16),
-            label.centerYAnchor.constraint(equalTo: plate.contentView.centerYAnchor),
+            plate.heightAnchor.constraint(equalToConstant: 44),
+            // Never wider than the screen, however long the host is — the label
+            // truncates in the middle instead, which keeps the domain readable
+            // when it is the path that is long.
+            plate.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 20),
+            plate.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
+            row.leadingAnchor.constraint(equalTo: plate.contentView.leadingAnchor, constant: 16),
+            row.trailingAnchor.constraint(equalTo: plate.contentView.trailingAnchor, constant: -16),
+            row.centerYAnchor.constraint(equalTo: plate.contentView.centerYAnchor),
         ])
 
         plate.transform = CGAffineTransform(translationX: 0, y: 10)
@@ -1291,7 +1347,21 @@ final class BrowserViewController: UIViewController {
             plate.alpha = 1
             plate.transform = .identity
         }
-        UIView.animate(withDuration: 0.3, delay: 1.6, options: [.curveEaseIn]) {
+
+        // A plate you can act on has to outlast reading it; one that only
+        // reports gets out of the way.
+        let dismissal = DispatchWorkItem { [weak self] in self?.dismissPopupNotice() }
+        popupNoticeDismissal = dismissal
+        DispatchQueue.main.asyncAfter(deadline: .now() + (onOpen == nil ? 1.6 : 5.5),
+                                      execute: dismissal)
+    }
+
+    private func dismissPopupNotice() {
+        popupNoticeDismissal?.cancel()
+        popupNoticeDismissal = nil
+        guard let plate = popupNotice else { return }
+        popupNotice = nil
+        UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseIn]) {
             plate.alpha = 0
         } completion: { _ in
             plate.removeFromSuperview()
@@ -1543,6 +1613,7 @@ final class BrowserViewController: UIViewController {
         }
 
         currentScriptlet = nil          // belonged to the page that just went away
+        popupAllowedHosts.removeAll()   // granted to the profile that just went away
         contentProcessCrashes = 0
         rebuildWebView()
 
@@ -2640,22 +2711,27 @@ extension BrowserViewController: WKUIDelegate {
     /// a popup opened from a click *handler* arrives as `.other`, so that test
     /// throws away real login flows and keeps nothing.
     ///
-    /// Three things separate a bank's popup from an ad's:
+    /// Two things pass without question:
     ///
-    /// 1. **A user gesture.** `javaScriptCanOpenWindowsAutomatically` is false,
-    ///    so WebKit never calls this method for a popup nobody touched. Every
-    ///    one that arrives here is gesture-backed — necessary, and nowhere near
-    ///    sufficient, because a click-hijack fires inside your tap on *play*.
-    /// 2. **Who it belongs to.** A popup to the site's own registrable domain
-    ///    is that site's own flow. Allowed without further question.
-    /// 3. **The filter lists.** Cross-site popups go to the ad-block engine,
-    ///    which is what the lists are for — ad and redirect domains are what
-    ///    they cover best. An identity provider isn't in them; a redirector is.
+    /// 1. **Who it belongs to.** A pop-up to the site's own registrable domain
+    ///    is that site's own flow — a statement, a receipt, a payment hand-off.
+    /// 2. **Where it goes.** A sign-in provider is allowed on the strength of
+    ///    the destination, which an ad redirect cannot fake: a domain on that
+    ///    list is one whose operator would have to be complicit.
     ///
-    /// Whatever survives becomes a **new tab**, except a sign-in, which gets a
-    /// window of its own. A sign-in is the one case that needs the page behind
-    /// it left running: it has to post the result back to its opener, and an
-    /// opener whose web view has been taken away cannot receive it.
+    /// Everything else is held, and what happens next is the user's to say. By
+    /// default the browser asks — it names the destination on a plate with one
+    /// button, and opens it if that button is tapped. With "Always block
+    /// pop-ups" on it refuses outright and says so. Note what is *not* used
+    /// here: a user-gesture test, which WebKit has already applied
+    /// (`javaScriptCanOpenWindowsAutomatically` is false, so nothing untouched
+    /// reaches this method) and which proves nothing anyway, since a
+    /// click-hijack fires inside your tap on *play*.
+    ///
+    /// Whatever gets through becomes a **new tab**, except a sign-in, which
+    /// gets a window of its own. A sign-in is the one case that needs the page
+    /// behind it left running: it has to post the result back to its opener,
+    /// and an opener whose web view has been taken away cannot receive it.
     func webView(_ webView: WKWebView,
                  createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction,
@@ -2677,12 +2753,36 @@ extension BrowserViewController: WKUIDelegate {
         // domain on that list is one whose operator would have to be complicit.
         let signIn = Self.isSignInProvider(url)
 
-        // With the redirect blocker off, a pop-up is a pop-up. With it on, only
-        // the two cases above get through.
-        guard sameSite || signIn || !Settings.blockRedirectPages else {
-            log("[Nav] redirect blocked: \(url.host ?? url.absoluteString)")
-            showRedirectBlockedNotice()
-            return nil
+        // Everything that is neither of those has to be decided on.
+        if !sameSite && !signIn {
+            guard !Settings.blockRedirectPages else {
+                // Asked and answered, in Settings. Say it happened; offer
+                // nothing, because the user already said what they wanted.
+                log("[Nav] pop-up blocked: \(url.host ?? url.absoluteString)")
+                showPopupNotice(destination: nil, onOpen: nil)
+                return nil
+            }
+            // The default: hold it, and ask.
+            //
+            // Returning nil is the only honest answer to give the page here.
+            // WebKit wants a web view back synchronously and the decision has
+            // not been made yet, so `window.open` reports the window refused —
+            // which it was. Accepting it now and closing it if the user says no
+            // would mean loading the page in order to ask whether to load it.
+            //
+            // The cost is the opener: opened from the notice, the new tab has
+            // no `window.opener` back to the page that asked. Sign-ins are the
+            // one flow that depends on that, and they never reach here.
+            let opener = webView.url?.host
+            guard opener.map(popupAllowedHosts.contains) == true else {
+                log("[Nav] pop-up held: \(url.host ?? url.absoluteString)")
+                showPopupNotice(destination: url.host) { [weak self] in
+                    guard let self else { return }
+                    if let opener { popupAllowedHosts.insert(opener) }
+                    openTab(url: url)
+                }
+                return nil
+            }
         }
 
         // Everything but a sign-in becomes a tab.

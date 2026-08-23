@@ -173,22 +173,37 @@ enum Settings {
     }
 
     // MARK: Privacy & Security
-    /// Refuse every cross-site page a site tries to open on top of the one you
-    /// asked for.
+    /// Refuse every cross-site page a site tries to open, without asking.
     ///
-    /// Independent of the blocking level and of every filter list, and that is
-    /// the whole point of it. Redirect ads work by being new: a domain nobody
-    /// has listed yet, registered this morning, opened from inside your tap on
-    /// something else. A list-based blocker is always a step behind that. This
-    /// isn't — it doesn't ask what the destination is, only whether the site
-    /// you are on is entitled to send you somewhere else without being asked.
+    /// Off by default, and off does not mean *allowed* — it means the browser
+    /// asks instead of deciding. That distinction is the whole of this setting.
     ///
-    /// Popups to the site's *own* domain still work, and have to: that is how a
-    /// bank opens a statement, how card verification runs, and how a checkout
-    /// hands off to its own payment page. What is refused is another site's
-    /// page appearing over the one you chose.
+    /// It used to be on, and the reasoning was sound as far as it went: a
+    /// redirect ad works by being new — a domain nobody has listed yet,
+    /// registered this morning, opened from inside your tap on something else —
+    /// so a list-based blocker is always a step behind it, and a rule about
+    /// *shape* rather than destination is not. What that reasoning missed is
+    /// that `target="_blank"` has exactly the same shape. WebKit reports a
+    /// tapped link that opens in a new tab and an ad spawning a window through
+    /// one delegate call with nothing to tell them apart, so a site whose links
+    /// all open in new tabs — a directory, an aggregator, a list of anything —
+    /// had every link refused. The rule was right about pop-ups and wrong about
+    /// how many ordinary things are pop-ups.
+    ///
+    /// Nobody else resolves this by blocking outright. Firefox shows a bar
+    /// offering to show the blocked window or allow the site; Chrome puts an
+    /// icon in the omnibox with the same two choices; Brave on iOS allows any
+    /// pop-up the user touched the page to produce. All three refuse silently
+    /// and then hand the decision back. This does the same, with the one action
+    /// a phone has room for.
+    ///
+    /// On, it is the old behaviour exactly: refused, told, no way through.
+    ///
+    /// Pop-ups to the site's *own* domain are unaffected either way, and have
+    /// to be: that is how a bank opens a statement, how card verification runs,
+    /// and how a checkout hands off to its own payment page.
     static var blockRedirectPages: Bool {
-        get { bool("settings.blockRedirectPages", default: true) }
+        get { bool("settings.blockRedirectPages", default: false) }
         set { d.set(newValue, forKey: "settings.blockRedirectPages") }
     }
 
