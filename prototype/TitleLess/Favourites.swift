@@ -255,9 +255,23 @@ final class FavouritesBar: UIView {
         ])
         NSLayoutConstraint.activate([
             button.widthAnchor.constraint(equalToConstant: Self.itemSize),
-            button.heightAnchor.constraint(equalToConstant: Self.itemSize),
+            Self.itemHeight(button),
         ])
         return button
+    }
+
+    /// The tile's height, at a priority the collapsed row can beat.
+    ///
+    /// Required, this fights the caller: the row is hidden by pinning the bar's
+    /// height to zero, and the stack inside is pinned to its top and bottom, so
+    /// a required 38 inside a 0-high bar is unsatisfiable and UIKit breaks one
+    /// of them for us. Which one it picks is not ours to decide, and it logged
+    /// every time favourites were switched off. At 999 the tile simply yields
+    /// while the row is collapsed and is exact everywhere else.
+    private static func itemHeight(_ view: UIView) -> NSLayoutConstraint {
+        let constraint = view.heightAnchor.constraint(equalToConstant: itemSize)
+        constraint.priority = .init(999)
+        return constraint
     }
 
     private func makeAddButton() -> UIView {
@@ -283,7 +297,7 @@ final class FavouritesBar: UIView {
                          for: .primaryActionTriggered)
         NSLayoutConstraint.activate([
             button.widthAnchor.constraint(equalToConstant: Self.itemSize),
-            button.heightAnchor.constraint(equalToConstant: Self.itemSize),
+            Self.itemHeight(button),
         ])
         return button
     }

@@ -122,11 +122,24 @@ final class StartPanelView: UIView {
             title.topAnchor.constraint(equalTo: container.topAnchor, constant: 64),
             hint.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 6),
             hint.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+        ])
+        // Side margins, at a priority that survives having no width to margin.
+        //
+        // This view is a table's `backgroundView`, so its frame is UIKit's to
+        // set and it starts at zero — and a 24pt inset from each side of a
+        // zero-wide view, held with the centring, is unsatisfiable. It resolved
+        // itself the moment the table laid out, having logged a conflict on the
+        // way. At 999 the insets give way while the width is nothing and hold
+        // exactly once there is some.
+        for margin in [
             hint.leadingAnchor.constraint(greaterThanOrEqualTo: container.leadingAnchor,
                                           constant: 24),
             hint.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor,
                                            constant: -24),
-        ])
+        ] {
+            margin.priority = .init(999)
+            margin.isActive = true
+        }
         return container
     }()
 
