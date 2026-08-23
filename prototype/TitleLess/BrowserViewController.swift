@@ -1525,12 +1525,29 @@ final class BrowserViewController: UIViewController {
         }
         homeOverlay.panel.onConfirmDestructive = { [weak self] title, consequence, act in
             guard let self else { return }
+            // An alert on iOS 26, an action sheet before it.
+            //
+            // Through iOS 18 the sheet is the right shape for this: it rises
+            // from the bottom, full width, with room for a sentence explaining
+            // what is about to be destroyed. iOS 26 renders the same sheet as a
+            // small popover tethered to its source view, and the explanation —
+            // which is the entire reason for the prompt — gets clipped after a
+            // line and a half. A warning nobody can finish reading is not a
+            // warning.
+            //
+            // An alert is centred, sized to its text, and unchanged in shape
+            // across both. Only the newer platform is moved, because on the
+            // older one the sheet is better and there is no reason to lose it.
+            let centred: Bool
+            if #available(iOS 26.0, *) { centred = true } else { centred = false }
+
             let alert = UIAlertController(title: title, message: consequence,
-                                          preferredStyle: .actionSheet)
+                                          preferredStyle: centred ? .alert : .actionSheet)
             alert.addAction(UIAlertAction(title: title, style: .destructive) { _ in act() })
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-            // iPad presents an action sheet as a popover and insists on knowing
-            // what it is popping out of.
+            // An action sheet on iPad is a popover, and it insists on knowing
+            // what it is popping out of. Harmless on the alert path, which has
+            // no popover controller to configure.
             alert.popoverPresentationController?.sourceView = homeOverlay.panel
             alert.popoverPresentationController?.sourceRect = homeOverlay.panel.bounds
             present(alert, animated: true)
