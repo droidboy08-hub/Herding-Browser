@@ -1,0 +1,54 @@
+! Title: App Extras (Aggressive)
+! Description: Rules written for this browser that only apply at the Aggressive
+!   level. Everything here blocks something the community lists deliberately
+!   leave alone, so it stays out of the levels people run by default.
+!
+! The bar for this file is lower than for app-extras.txt — these need only be
+! ad or tracking infrastructure — but it is not zero. Nothing goes in that
+! serves page content.
+
+! ---------------------------------------------------------------------------
+! DoubleClick subdomains the community lists miss.
+!
+! EasyList blocks `doubleclick.net` host by host rather than as a whole domain,
+! and deliberately: the same domain carries server-side ad insertion for video,
+! which the lists exempt by name —
+!
+!   @@||pubads.g.doubleclick.net/ssai/
+!   @@||pubads.g.doubleclick.net/ondemand/hls/
+!
+! A blanket `||doubleclick.net^` would take those with it and stop video
+! playing on every site using DAI. Naming the hosts individually is what makes
+! these safe.
+!
+! `stats.g`, `ad.` and `static.` are already covered upstream. These two are
+! not: the mobile ad host, and the MediaVisor campaign-management platform.
+||m.doubleclick.net^
+||mediavisor.doubleclick.net^
+
+! ---------------------------------------------------------------------------
+! Analytics hosts with no upstream rule at all.
+!
+! `click.googleanalytics.com` appears in none of the bundled lists, under any
+! modifier. It is the outbound-link click tracker — its only job is recording
+! that you left.
+!
+! Note what is *not* here: a broad `||google-analytics.com^`. Upstream scopes
+! that host to `$script,third-party,xmlhttprequest` and then carries a long list
+! of `@@` exceptions for sites that break without analytics.js. Those exceptions
+! live in EasyPrivacy, and a `WKContentRuleList` exception cannot reach across
+! into another compiled list — so a blanket rule here would be unexemptable and
+! would break every site on that list.
+||click.googleanalytics.com^
+
+! ---------------------------------------------------------------------------
+! Meta's Audience Network, which no bundled list names.
+!
+! `an.facebook.com` serves Meta's ads *into other people's* sites and apps. The
+! sibling hosts are already covered — `||analytics.facebook.com^$third-party`,
+! `||pixel.facebook.com^` — and this one was simply missed.
+!
+! `$third-party` for the same reason upstream uses it on the siblings: the rule
+! then cannot fire while you are actually on facebook.com, where this host is
+! first-party and not ours to interfere with.
+||an.facebook.com^$third-party

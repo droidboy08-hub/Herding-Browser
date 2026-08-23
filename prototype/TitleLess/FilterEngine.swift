@@ -15,6 +15,25 @@ enum FilterResourceType: String {
     case websocket
     case ping
     case other
+
+    /// The engine's type for a name reported by the injected request hook.
+    ///
+    /// `fetch` is not a resource type in filter syntax — lists express both
+    /// `fetch()` and `XMLHttpRequest` as `xmlhttprequest`, which is what the
+    /// case above already claims to cover. It did not: the hook reports
+    /// `"fetch"`, `init(rawValue:)` returned nil for it, and the caller's
+    /// `?? .other` quietly turned every `fetch` into `other`.
+    ///
+    /// So every `$xmlhttprequest` rule missed every `fetch` — and since
+    /// EasyPrivacy is runtime-only, that path is the only thing enforcing those
+    /// rules at all. Modern pages reach for `fetch` far more often than XHR.
+    init(reportedName: String) {
+        if reportedName == "fetch" {
+            self = .xmlhttprequest
+        } else {
+            self = FilterResourceType(rawValue: reportedName) ?? .other
+        }
+    }
 }
 
 /// Cosmetic filters for one page, decoded from the engine's JSON.

@@ -368,7 +368,7 @@ final class RequestBlockingHandler: NSObject, WKScriptMessageHandlerWithReply {
             return
         }
 
-        let type = FilterResourceType(rawValue: kind) ?? .other
+        let type = FilterResourceType(reportedName: kind)
 
         // Answer from the cache without leaving this thread when we can. On a
         // video site the same handful of hosts and paths are asked about
