@@ -2018,11 +2018,22 @@ final class BrowserViewController: UIViewController {
     /// whole point is leaving nothing behind, that would be a hole straight
     /// through it. Ephemeral keeps both in memory, and cookies are refused
     /// outright: an icon request has no business carrying or setting any.
+    ///
+    /// Ten seconds, against a default of sixty. A favicon is decoration: if it
+    /// has not arrived by now the tab shows its globe and nothing is worse for
+    /// it. Sixty seconds of waiting for one buys a connection held open against
+    /// a host that is not answering, on a page whose real requests are queued
+    /// behind the same few sockets — so the cost of the default lands on the
+    /// page, not on the icon.
     private static let faviconSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.httpShouldSetCookies = false
         config.httpCookieAcceptPolicy = .never
         config.httpCookieStorage = nil
+        config.timeoutIntervalForRequest = 10
+        // The whole errand, retries included — a host that answers a byte at a
+        // time would otherwise keep resetting the per-request timer above.
+        config.timeoutIntervalForResource = 20
         return URLSession(configuration: config)
     }()
 
