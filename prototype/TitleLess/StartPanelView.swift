@@ -477,13 +477,19 @@ final class StartPanelView: UIView {
         guard mode == .downloads else { return }
         let before = downloads.count
         refreshDownloads()
-        if downloads.count == before {
-            let offset = table.contentOffset
+        guard downloads.count == before else {
             table.reloadData()
-            table.setContentOffset(offset, animated: false)
-        } else {
-            table.reloadData()
+            return
         }
+        // Same rows, new numbers — reconfigured rather than reloaded.
+        //
+        // `reloadData` rebuilds every cell, and rebuilding a cell closes any
+        // swipe open on it. Progress ticks several times a second, so a swipe
+        // on a running download was shut again before it could be tapped:
+        // Delete and Cancel existed and were simply unreachable.
+        // `reconfigureRows` updates the same cells in place, and the swipe
+        // stays where the finger left it.
+        table.reconfigureRows(at: table.indexPathsForVisibleRows ?? [])
     }
 
     @objc private func retryTapped() {
@@ -1049,7 +1055,11 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
             switch item.state {
             case .completed:   onOpenDownload?(item)
             case .failed:      DownloadManager.shared.retry(item); downloadsChanged()
-            case .downloading: break
+            // Tapping a transfer is the way to stop it and the way to start it
+            // again. There is nothing else a row in flight can usefully do, and
+            // the swipe is a poor place for something you may want twice.
+            case .downloading: DownloadManager.shared.pause(item);  downloadsChanged()
+            case .paused:      DownloadManager.shared.resume(item); downloadsChanged()
             }
         } else if mode == .history {
             guard !entries.isEmpty else { return }
@@ -1130,7 +1140,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 self?.downloadsChanged()
                 done(true)
             }
-            guard item.state == .downloading else {
+            guard item.state == .downloading || item.state == .paused else {
                 return UISwipeActionsConfiguration(actions: [delete])
             }
             let cancel = UIContextualAction(style: .normal, title: "Cancel") { [weak self] _, _, done in
@@ -1305,6 +1315,17 @@ private final class DownloadCell: UITableViewCell {
             progress.setProgress(Float(item.fractionCompleted), animated: false)
             retry.isHidden = true
             statusLabel.text = item.sizeDescription
+            statusLabel.textColor = .secondaryLabel
+
+        case .paused:
+            icon.image = UIImage(systemName: "pause.circle")
+            icon.tintColor = .secondaryLabel
+            // The bar stays, holding its place. A paused transfer that showed
+            // no progress would look like one that had lost it.
+            progress.isHidden = false
+            progress.setProgress(Float(item.fractionCompleted), animated: false)
+            retry.isHidden = true
+            statusLabel.text = item.errorMessage ?? "Paused · \(item.sizeDescription)"
             statusLabel.textColor = .secondaryLabel
 
         case .completed:

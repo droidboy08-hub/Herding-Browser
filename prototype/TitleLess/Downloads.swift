@@ -5,7 +5,7 @@ import WebKit
 /// A file the user downloaded. Live rows update in place while the transfer
 /// runs; finished rows persist across launches.
 struct DownloadItem: Identifiable, Codable, Equatable {
-    enum State: String, Codable { case downloading, completed, failed }
+    enum State: String, Codable { case downloading, paused, completed, failed }
 
     let id: UUID
     var filename: String
@@ -103,6 +103,13 @@ final class DownloadManager: NSObject {
     private var itemID: [ObjectIdentifier: UUID] = [:]      // WKDownload -> item
     private var observations: [UUID: NSKeyValueObservation] = [:]
     private var live: [UUID: WKDownload] = [:]
+    /// Resume data for paused transfers, kept in memory only.
+    ///
+    /// It can run to megabytes, and its value expires with the server's notion
+    /// of the request, so writing it to disk would trade real space for a
+    /// promise that often cannot be kept. A pause does not survive a relaunch;
+    /// `resume` falls back to starting over, which is what the row already did.
+    private var resumeData: [UUID: Data] = [:]
     private var retryCount: [UUID: Int] = [:]
     private let maxAutoRetries = 1
 
@@ -148,10 +155,13 @@ final class DownloadManager: NSObject {
         persistAndNotify()
     }
 
-    /// Re-run a failed download from its original URL. WebKit has no public
-    /// resume-data API on `WKDownload`, so a retry is a fresh transfer.
+    /// Re-run a failed download from its original URL, as a fresh transfer.
+    ///
+    /// A *paused* download resumes where it stopped instead — see `resume`.
+    /// This is for the ones that failed, which have no resume data to offer.
     func retry(_ item: DownloadItem) {
         guard let webView, item.state != .downloading else { return }
+        resumeData[item.id] = nil
         guard let idx = items.firstIndex(where: { $0.id == item.id }) else { return }
         items[idx].state = .downloading
         items[idx].bytesReceived = 0
@@ -173,6 +183,56 @@ final class DownloadManager: NSObject {
         for item in failedItems { retry(item) }
     }
 
+    // MARK: - Pausing
+
+    /// Stop the transfer but keep what has arrived.
+    ///
+    /// `WKDownload` has no pause. What it has is a cancel that hands back
+    /// resume data, and a `resumeDownload` on the web view that takes it —
+    /// which together are a pause, and are what this does.
+    func pause(_ item: DownloadItem) {
+        guard let download = live[item.id] else { return }
+        download.cancel { [weak self] data in
+            Task { @MainActor in
+                guard let self else { return }
+                self.live[item.id] = nil
+                self.observations[item.id] = nil
+                self.resumeData[item.id] = data
+                guard let idx = self.items.firstIndex(where: { $0.id == item.id }) else { return }
+                self.items[idx].state = .paused
+                // No resume data means the server would not offer a range, so
+                // resuming will have to start over. Say so on the row rather
+                // than discovering it on the tap.
+                self.items[idx].errorMessage = data == nil ? "Paused — will restart" : nil
+                self.persistAndNotify()
+            }
+        }
+    }
+
+    /// Pick a paused transfer back up, from where it stopped if the server
+    /// allowed it and from the beginning if it did not.
+    func resume(_ item: DownloadItem) {
+        guard let webView, item.state == .paused else { return }
+        guard let data = resumeData[item.id] else {
+            retry(item)
+            return
+        }
+        guard let idx = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[idx].state = .downloading
+        items[idx].errorMessage = nil
+        let id = items[idx].id
+        resumeData[id] = nil
+        persistAndNotify()
+
+        webView.resumeDownload(fromResumeData: data) { [weak self] download in
+            guard let self else { return }
+            download.delegate = self
+            itemID[ObjectIdentifier(download)] = id
+            live[id] = download
+            observeProgress(of: download, id: id)
+        }
+    }
+
     // MARK: - Editing the list
 
     func cancel(_ item: DownloadItem) {
@@ -189,6 +249,7 @@ final class DownloadManager: NSObject {
         live[item.id]?.cancel()
         live[item.id] = nil
         observations[item.id] = nil
+        resumeData[item.id] = nil
         try? FileManager.default.removeItem(at: item.fileURL)
         items.removeAll { $0.id == item.id }
         persistAndNotify()
