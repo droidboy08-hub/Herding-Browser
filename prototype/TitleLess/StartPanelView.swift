@@ -690,7 +690,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 .action("Home Behaviour"),
                 .appearanceModePicker,
                 .action("App Icon"),
-                .action("Wallpaper"),
+                .action("Background"),
             ]),
             SettingsSection(title: "Media", rows: [
                 // One switch for both halves: claiming the audio session and
@@ -1126,7 +1126,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 case "Home Behaviour":  onShowHomeBehaviour?()
                 case "Safeguards":       onShowSafeguards?()
                 case "Content Filtering": onShowContentFiltering?()
-                case "Wallpaper":       onShowAppearance?()
+                case "Background":      onShowAppearance?()
                 case "App Icon":        onShowAppIcon?()
                 case "Passwords":       onShowPasswords?()
                 case "Licences":        onShowLicences?()

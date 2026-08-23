@@ -48,7 +48,7 @@ final class AppearanceSettingsViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Wallpaper"
+        title = "Background"
         view.backgroundColor = .systemGroupedBackground
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             systemItem: .done, primaryAction: UIAction { [weak self] _ in
@@ -81,7 +81,7 @@ final class AppearanceSettingsViewController: UIViewController {
     }
 
     private func report(_ message: String) {
-        let alert = UIAlertController(title: "Couldn't set that wallpaper",
+        let alert = UIAlertController(title: "Couldn't set that background",
                                       message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)
@@ -97,7 +97,7 @@ extension AppearanceSettingsViewController: UITableViewDataSource, UITableViewDe
     }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        "A moving wallpaper costs battery while it is on screen, which is why it "
+        "A moving background costs battery while it is on screen, which is why it "
         + "stops the moment you leave the start box."
     }
 
