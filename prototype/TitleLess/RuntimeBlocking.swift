@@ -120,7 +120,7 @@ actor AdblockEngineStore {
 
     private func sources(for level: BlockingLevel) -> [FilterListSource] {
         FilterListSource.allCases.filter {
-            $0.usedAtRuntime && $0.isEnabled && level.includes($0.minimumLevel)
+            $0.usedAtRuntime && $0.isEnabled && level.includes($0.runtimeMinimumLevel)
         }
     }
 
@@ -395,6 +395,7 @@ final class RequestBlockingHandler: NSObject, WKScriptMessageHandlerWithReply {
             let blocked = await engine.matches(url: resource,
                                                sourceURL: source,
                                                resourceType: type)
+            if blocked { log("[Adblock] runtime blocked \(type.rawValue): \(resource)") }
             await VerdictCache.shared.store(blocked, for: key)
             replyHandler(blocked, nil)
         }
@@ -472,6 +473,37 @@ actor VerdictCache {
 /// page reports.
 final class CosmeticFilterHandler: NSObject, WKScriptMessageHandlerWithReply {
 
+    /// Which URL to ask the engine about for a frame.
+    ///
+    /// Normally the frame's own address, reported by the script as
+    /// `location.href`. The exception is the frame that has no address of its
+    /// own: an `about:blank`, `srcdoc`, `blob:` or `data:` iframe a script
+    /// wrote into. Those inherit their parent's origin — that is what the
+    /// same-origin policy says they are — but `location.href` still reads
+    /// `about:blank`, and asking the engine about `about:blank` returns
+    /// nothing, because no filter list has ever had a rule for it.
+    ///
+    /// That is most of an ad banner's hiding place. The ads a site sells
+    /// itself go into frames it writes rather than frames it navigates, so a
+    /// page could come back with hundreds of cosmetic selectors for its own
+    /// domain while the banners sat one frame down, in a document those
+    /// selectors were never offered to.
+    ///
+    /// `WKFrameInfo.securityOrigin` is the resolved origin — inherited for
+    /// these frames, real for everything else — so it answers exactly the
+    /// question `location.href` cannot. Only opaque schemes are substituted; a
+    /// frame that genuinely came from somewhere keeps its own URL, path and
+    /// all, since site-specific rules can be scoped to a path.
+    private static func cosmeticLookupURL(reported: String, frame: WKFrameInfo) -> String {
+        guard let scheme = URL(string: reported)?.scheme?.lowercased(),
+              ["about", "data", "blob", "javascript"].contains(scheme) else { return reported }
+        let origin = frame.securityOrigin
+        guard !origin.host.isEmpty, !origin.`protocol`.isEmpty else { return reported }
+        var composed = "\(origin.`protocol`)://\(origin.host)"
+        if origin.port != 0 { composed += ":\(origin.port)" }
+        return composed
+    }
+
     func userContentController(_ controller: WKUserContentController,
                                didReceive message: WKScriptMessage,
                                replyHandler: @escaping (Any?, String?) -> Void) {
@@ -496,9 +528,10 @@ final class CosmeticFilterHandler: NSObject, WKScriptMessageHandlerWithReply {
             }
             let webView = message.webView
             let frame = message.frameInfo
+            let lookupURL = Self.cosmeticLookupURL(reported: url, frame: frame)
             Task { @MainActor in
                 guard let engine = await AdblockEngineStore.shared.engine(for: level),
-                      let resources = await engine.cosmeticResources(for: url) else {
+                      let resources = await engine.cosmeticResources(for: lookupURL) else {
                     replyHandler(nil, nil)
                     return
                 }
@@ -518,14 +551,18 @@ final class CosmeticFilterHandler: NSObject, WKScriptMessageHandlerWithReply {
                         }
                     }
                 }
+                let frameHost = URL(string: lookupURL)?.host ?? lookupURL
+                log("[Adblock] cosmetic \(frameHost): "
+                    + "\(level.hidesElements ? resources.hideSelectors.count : 0) specific, "
+                    + "generichide=\(resources.generichide || !level.hidesElementsGenerically)")
                 replyHandler([
-                    // Site-specific selectors only run from `medium` up; `low`
+                    // Site-specific selectors run from `standard` up; `basic`
                     // blocks requests and never touches the page's markup.
                     "hide": level.hidesElements ? Array(resources.hideSelectors) : [],
                     "exceptions": Array(resources.exceptions),
                     // `generichide` means the page has an exception against
                     // generic rules, so the script skips the second round trip.
-                    // Below `high` the level itself is that exception — saying so
+                    // At `basic` the level itself is that exception — saying so
                     // here stops the script asking at all, rather than asking and
                     // being told nothing every time.
                     "generichide": resources.generichide || !level.hidesElementsGenerically,
@@ -533,9 +570,10 @@ final class CosmeticFilterHandler: NSObject, WKScriptMessageHandlerWithReply {
             }
 
         case "generic":
-            // Generic rules match by class and id on every site there is, which
-            // is how a page's own banner ends up hidden along with the ads. Only
-            // `high` opts into that.
+            // Generic rules match by class and id on every site there is. They
+            // are also most of what takes a banner off a page whose ads are
+            // served from its own domain, which is why every level that touches
+            // markup at all runs them — see `hidesElementsGenerically`.
             guard level.hidesElementsGenerically else {
                 replyHandler([], nil)
                 return
@@ -555,6 +593,8 @@ final class CosmeticFilterHandler: NSObject, WKScriptMessageHandlerWithReply {
                 let selectors = await engine.hiddenSelectors(classes: classes,
                                                              ids: ids,
                                                              exceptions: exceptions)
+                log("[Adblock] generic: \(selectors.count) from "
+                    + "\(classes.count) class(es), \(ids.count) id(s)")
                 replyHandler(selectors, nil)
             }
 

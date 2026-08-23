@@ -168,6 +168,35 @@ enum FilterListSource: String, CaseIterable {
         }
     }
 
+    /// The level at which the *runtime* engine loads this list.
+    ///
+    /// Usually the same as `minimumLevel`, and `firstPartyTrackers` is why it
+    /// isn't always. That list is Brave's "Firstparty specific filters", and
+    /// despite the name it is 3,360 cosmetic rules against 865 network ones —
+    /// most of it is element hiding for sites that serve their own ads, which is
+    /// a different thing entirely from blocking first-party requests. Gating the
+    /// whole file behind Aggressive withheld all 3,360 from Standard.
+    ///
+    /// Brave does not draw the line there. Its standard and aggressive engines
+    /// load the same lists and differ in exactly one thing: whether first-party
+    /// *network requests* are blocked. That distinction is enforced here too,
+    /// independently of which lists are loaded — the injected hook skips
+    /// first-party requests below Aggressive, and so does the native handler —
+    /// so loading this list earlier cannot make Standard start blocking
+    /// first-party requests. What it does is let Standard hide the banners.
+    ///
+    /// The compiled rule list stays on `minimumLevel`. So below Aggressive this
+    /// list's network rules reach the runtime hook, which sees `fetch` and XHR,
+    /// but not the declarative path, which sees everything else. Uneven, and
+    /// deliberately so: the alternative is another compiled list on every page
+    /// for the sake of 865 rules that are mostly first-party anyway.
+    var runtimeMinimumLevel: BlockingLevel {
+        switch self {
+        case .firstPartyTrackers: return .standard
+        default:                  return minimumLevel
+        }
+    }
+
     /// Whether the runtime engine loads this list too.
     ///
     /// The CNAME list doesn't need to be in both. Declarative rules already cover
@@ -435,5 +464,6 @@ extension ContentBlocker {
         for list in lists {
             controller.add(list)
         }
+        log("[Adblock] \(lists.count) rule list(s) applied at \(level)")
     }
 }

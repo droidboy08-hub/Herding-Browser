@@ -592,9 +592,23 @@ enum BlockingLevel: String, CaseIterable, Codable {
     var hidesElements: Bool { self == .standard || self == .aggressive }
 
     /// Whether *generic* cosmetic rules — those matching any site by class or id —
-    /// are applied. Site-specific rules are always fine; these are the ones that
-    /// take a site's own banner down with the ads.
-    var hidesElementsGenerically: Bool { self == .aggressive }
+    /// are applied.
+    ///
+    /// This was `aggressive` only, on the reasoning that a rule matching any
+    /// site by class or id is the one that takes a site's own banner down with
+    /// the ads. That is a real risk and it is not how anybody else draws the
+    /// line. In Brave the standard and aggressive engines differ in exactly one
+    /// thing — whether *first-party network requests* are blocked — and both
+    /// run the class/id cosmetic pass; uBlock Origin applies generic cosmetic
+    /// rules at its defaults too. Gating it here made Standard a level that
+    /// blocked ad *requests* and then left the banners the site draws itself
+    /// sitting on the page, which is the difference somebody notices
+    /// immediately and reads as the blocker not working.
+    ///
+    /// The lists already carry the exception for sites this breaks: a
+    /// `$generichide` rule turns the pass off per-site, and it is honoured.
+    /// `basic` remains the level that touches no markup at all.
+    var hidesElementsGenerically: Bool { self == .standard || self == .aggressive }
 
     /// Whether `+js(...)` scriptlets run.
     ///
