@@ -407,6 +407,33 @@ final class ExpandedHitButton: UIButton {
     }
 }
 
+/// A stack view that lets its children be hit outside its own bounds.
+///
+/// `hitInset` above did almost nothing on its own, and this is why: hit-testing
+/// is clipped by every ancestor. A parent asked about a point outside its own
+/// bounds answers no and never recurses, so a child's enlarged target is cut
+/// back to whatever the parent covers. The header's icon row is one glyph tall
+/// and ends exactly at the last icon's edge, which left the close button with
+/// roughly the 15pt cross and nothing around it — the whole 22pt margin between
+/// it and the card's edge was dead.
+///
+/// So the stack answers for its children as well as for itself. Nothing else
+/// changes: no layout, no spacing, no size. Where two enlarged targets now
+/// overlap, UIKit's reverse-order search hands the touch to the one added last,
+/// which puts the close button ahead of its left-hand neighbour — the right way
+/// round, since it is the one at the edge with room to spare.
+final class ExpandedHitStackView: UIStackView {
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        if bounds.contains(point) { return true }
+        return arrangedSubviews.contains { child in
+            !child.isHidden
+                && child.alpha > 0.01
+                && child.point(inside: convert(point, to: child), with: event)
+        }
+    }
+}
+
 /// The bookmark ribbon, drawn rather than taken from SF Symbols so it can be
 /// squashed when it is used.
 ///

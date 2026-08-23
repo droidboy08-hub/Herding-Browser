@@ -226,7 +226,7 @@ final class StartPanelView: UIView {
             UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold), forImageIn: .normal)
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 
-        let buttons = UIStackView(arrangedSubviews: [newTabButton, privateButton, gridButton, clearHistoryButton, retryButton, searchButton, closeButton])
+        let buttons = ExpandedHitStackView(arrangedSubviews: [newTabButton, privateButton, gridButton, clearHistoryButton, retryButton, searchButton, closeButton])
         buttons.axis = .horizontal
         buttons.spacing = 18
         buttons.translatesAutoresizingMaskIntoConstraints = false
