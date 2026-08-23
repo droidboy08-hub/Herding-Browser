@@ -42,6 +42,23 @@ enum Settings {
         d.object(forKey: key) == nil ? def : d.bool(forKey: key)
     }
 
+    /// Put every setting back to the value a fresh install would have. For
+    /// Shred App Data.
+    ///
+    /// The whole domain rather than a list of keys, and that is the point:
+    /// every accessor above reads through `bool(_:default:)` or its siblings,
+    /// which return the declared default when nothing is stored. Removing the
+    /// storage *is* the reset, and it cannot fall out of date the way a list of
+    /// keys to delete would the next time a setting is added.
+    ///
+    /// This takes `hasSeenWelcome` with it, so the app introduces itself again
+    /// on next launch. That is right rather than unfortunate: what is left
+    /// afterwards is a fresh install in every other respect.
+    static func resetToDefaults() {
+        guard let domain = Bundle.main.bundleIdentifier else { return }
+        d.removePersistentDomain(forName: domain)
+    }
+
     // MARK: Downloads
     /// Re-run a download once, automatically, after it fails.
     static var autoRetryDownloads: Bool {

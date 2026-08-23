@@ -1536,6 +1536,7 @@ final class BrowserViewController: UIViewController {
             present(alert, animated: true)
         }
         homeOverlay.panel.onClearHistory = { [weak self] in self?.forgetNavigationHistory() }
+        homeOverlay.panel.onShredAppData = { [weak self] in self?.shredAppData() }
         homeOverlay.panel.onClearWebsiteData = { [weak self] in
             // Clear the *profile's* store — clearing `.default()` from a private
             // profile would wipe the wrong session's data.
@@ -1550,6 +1551,74 @@ final class BrowserViewController: UIViewController {
             homeOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             homeOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
+    }
+
+    /// Erase the session: both profiles, every tab, the downloads list, and
+    /// anything left in the address field.
+    ///
+    /// Clear History & Website Data forgets where you have been while leaving
+    /// you where you are. This is the other request — hand the phone over with
+    /// nothing on it — so it takes the tabs too, and takes them from the
+    /// private profile as well. A shred that left a private tab open would be
+    /// worse than not offering one at all, since the whole point is being able
+    /// to say the app is empty and be right.
+    ///
+    /// Kept: only the files already saved into Files. Those are documents the
+    /// user has, not traces of a session, and deleting somebody's documents is
+    /// not something a button in a browser should do quietly.
+    ///
+    /// Everything else goes, settings included — which means the welcome screen
+    /// comes back on next launch, since `hasSeenWelcome` was a setting like any
+    /// other. Right rather than unfortunate: what is left is a fresh install.
+    private func shredAppData() {
+        // The live web view holds a page, a back/forward list and a process of
+        // its own, none of which any store can reach. It goes first, so nothing
+        // below is racing a page that is still loading.
+        stashSessionState()
+        teardownWebView()
+
+        normalProfile.clearAllBrowsingData()
+        privateProfile?.clearAllBrowsingData()
+        // Dropped entirely rather than emptied: it is in-memory storage, so a
+        // fresh one is genuinely fresh, and leaving private browsing after this
+        // would otherwise return to the same instance.
+        privateProfile = nil
+        if profile !== normalProfile { profile = normalProfile }
+
+        DownloadManager.shared.clearAll()
+        BookmarkStore.shared.removeAll()
+        FavouritesStore.shared.removeAll()
+        // The wallpaper is a file the user chose and a key saying which; both go.
+        WallpaperStore.clear()
+        // Last of the stores, because the settings above are read while the
+        // others are being torn down.
+        Settings.resetToDefaults()
+        popupAllowedHosts.removeAll()
+        currentScriptlet = nil
+        contentProcessCrashes = 0
+
+        installWebView()
+        restoreChromeAfterWebViewSwap()
+        tabManager.delegate = self
+
+        hasLoadedPage = false
+        addressCapsule.isHidden = true
+        webView.load(URLRequest(url: URL(string: "about:blank")!))
+
+        homeOverlay.panel.history = profile.history
+        homeOverlay.panel.isPrivateBrowsing = false
+        homeOverlay.clearAddressField()
+        homeOverlay.setTabs(tabs, current: currentTabID)
+
+        // Settings are back at their defaults, and every one of these is a
+        // setting somebody can see. Re-read them now rather than leaving the
+        // app wearing choices that no longer exist anywhere.
+        applyAppearance()
+        applyContentBlocking()
+        applyZoomPolicy()
+        homeOverlay.reloadWallpaper()
+        homeOverlay.reloadFavourites()
+        homeOverlay.reloadStartBoxButtons()
     }
 
     // MARK: - Private browsing

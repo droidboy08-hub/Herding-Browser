@@ -358,6 +358,14 @@ final class HomeOverlayView: UIView {
     /// The controls are reused rather than rebuilt: `removeFromSuperview` takes
     /// them out of the stack without releasing them, so the download icon keeps
     /// looping through a change and every target stays attached.
+    /// Empty the address field. For Shred App Data — the field keeps whatever
+    /// was typed or the address Home was opened from, and both are exactly the
+    /// kind of trace being erased.
+    func clearAddressField() {
+        field.text = ""
+        field.resignFirstResponder()
+    }
+
     func reloadStartBoxButtons() {
         iconStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for button in Settings.startBoxButtons {

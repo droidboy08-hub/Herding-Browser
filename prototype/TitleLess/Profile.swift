@@ -17,6 +17,13 @@ protocol Profile: AnyObject {
     var websiteDataStore: WKWebsiteDataStore { get }
 
     func shutdown()
+    /// Wipe this profile: history, tabs and everything WebKit cached for it.
+    func clearAllBrowsingData(completion: (() -> Void)?)
+}
+
+extension Profile {
+    /// The common case, where nothing needs to wait on the store finishing.
+    func clearAllBrowsingData() { clearAllBrowsingData(completion: nil) }
 }
 
 final class BrowserProfile: Profile {

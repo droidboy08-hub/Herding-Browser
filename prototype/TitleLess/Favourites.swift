@@ -93,6 +93,17 @@ final class FavouritesStore {
         save()
     }
 
+    /// For Shred App Data. The icons go too — each one was fetched from a site
+    /// the user visited, so the folder is a list of where they have been.
+    func removeAll() {
+        favourites.removeAll()
+        try? FileManager.default.removeItem(at: iconDirectory)
+        try? FileManager.default.createDirectory(at: iconDirectory,
+                                                 withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: fileURL)
+        save()
+    }
+
     func icon(for favourite: Favourite) -> UIImage? {
         UIImage(contentsOfFile: iconURL(for: favourite).path)
     }

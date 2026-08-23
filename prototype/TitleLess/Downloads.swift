@@ -262,6 +262,26 @@ final class DownloadManager: NSObject {
         persistAndNotify()
     }
 
+    /// Drop every row, in flight or not. For Shred App Data.
+    ///
+    /// Anything still transferring is cancelled first: a download that kept
+    /// writing after the list it belonged to was erased would put the record
+    /// back the moment it finished.
+    ///
+    /// The files stay, for the same reason `clearCompleted` leaves them. What
+    /// is being erased here is the browser's memory of the session, and a file
+    /// already saved into Files is not that — it is a document the user has,
+    /// and deleting somebody's documents is not something a Clear button in a
+    /// browser should do quietly.
+    func clearAll() {
+        for download in live.values { download.cancel { _ in } }
+        live.removeAll()
+        observations.removeAll()
+        resumeData.removeAll()
+        items.removeAll()
+        persistAndNotify()
+    }
+
     // MARK: - Progress
 
     private func observeProgress(of download: WKDownload, id: UUID) {

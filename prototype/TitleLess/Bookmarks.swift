@@ -58,6 +58,13 @@ final class BookmarkStore {
         save()
     }
 
+    /// For Shred App Data.
+    func removeAll() {
+        bookmarks.removeAll()
+        try? FileManager.default.removeItem(at: fileURL)
+        save()
+    }
+
     private func load() {
         guard let data = try? Data(contentsOf: fileURL),
               let stored = try? JSONDecoder().decode([Bookmark].self, from: data) else { return }

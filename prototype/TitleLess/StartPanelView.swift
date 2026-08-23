@@ -32,6 +32,8 @@ final class StartPanelView: UIView {
     /// Clearing history has to reach past the database. See
     /// `forgetNavigationHistory` in the browser.
     var onClearHistory: (() -> Void)?
+    /// Everything: tabs, both profiles, downloads, whatever was typed.
+    var onShredAppData: (() -> Void)?
     var onOpenDownload: ((DownloadItem) -> Void)?
     var onShowDownloads: (() -> Void)?
     /// Both need a view controller to present from, which a view isn't.
@@ -669,11 +671,14 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 // almost nobody moves twice; what stays is why people open
                 // Privacy at all — how much to block, and how to forget.
                 .action("Safeguards"),
-                // These two had handlers written for them and no row to reach
-                // them from — a browser that can't be told to forget anything
-                // is not one you can hand to somebody else for a minute.
-                .destructive("Clear History"),
-                .destructive("Clear Website Data"),
+                // One row, because they were never really two decisions.
+                // Clearing history and leaving every cookie in place forgets
+                // the list of where you went and keeps the part that lets those
+                // sites recognise you again, which is the half that matters.
+                // Nobody who wanted one wanted the other left behind.
+                .destructive("Clear History & Website Data"),
+                // The whole session, not just its traces: tabs included.
+                .destructive("Shred App Data"),
             ]),
             // One section, because the split was arbitrary: how Home is laid out
             // and what the app looks like are the same question asked twice, and
@@ -1084,19 +1089,24 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
             switch settingsSections[indexPath.section].rows[indexPath.row] {
             case .destructive(let title):
                 switch title {
-                case "Clear History":
-                    confirm(title, "Every page you have visited, forgotten.") { [weak self] in
+                case "Clear History & Website Data":
+                    confirm(title, "Forgets every page you have visited and signs you "
+                                 + "out of every site, leaving your tabs open.") { [weak self] in
                         self?.history?.clear()
                         self?.entries = []
                         self?.table.reloadData()
                         // The list is only half of it — the tabs' back/forward
                         // lists hold the same addresses.
                         self?.onClearHistory?()
-                    }
-                case "Clear Website Data":
-                    confirm(title, "Cookies, caches and local storage for every site. "
-                                 + "You will be signed out of everything.") { [weak self] in
                         self?.onClearWebsiteData?()
+                    }
+                case "Shred App Data":
+                    confirm(title, "Puts the app back to the day you installed it — "
+                                 + "every tab, everything saved and every setting, "
+                                 + "gone for good.") { [weak self] in
+                        self?.searchField.text = ""
+                        self?.entries = []
+                        self?.onShredAppData?()
                     }
                 case "Clear completed downloads":
                     DownloadManager.shared.clearCompleted()
