@@ -322,11 +322,36 @@ final class BrowserViewController: UIViewController {
         case .light:  view.window?.overrideUserInterfaceStyle = .light
         case .dark:   view.window?.overrideUserInterfaceStyle = .dark
         }
+        applyLegibilityOverWallpaper()
         applyTopColor()
         homeOverlay.reloadWallpaper()
         homeOverlay.reloadFavourites()
         homeOverlay.reloadStartBoxButtons()
         homeOverlay.panel.settingsChanged()
+    }
+
+    /// Let the wallpaper decide whether Home is drawn light or dark.
+    ///
+    /// The cards are clear glass, so what is behind them is what their text is
+    /// read against — and the wallpaper is behind them, not the appearance
+    /// setting. Dark mode with the Paper gradient put white labels on a cream
+    /// card and made Home unreadable; the same would happen to anybody who
+    /// picked a bright photo.
+    ///
+    /// This is the rule iOS uses on the Lock Screen, where the clock is dark on
+    /// a bright wallpaper whatever the phone's appearance is set to. It applies
+    /// to the overlay only. Everything reached *from* Home — Settings,
+    /// Safeguards, the sheets — is presented over the page rather than over the
+    /// wallpaper, and keeps the appearance the user chose.
+    private func applyLegibilityOverWallpaper() {
+        switch WallpaperStore.backdropIsLight {
+        case true:  homeOverlay.overrideUserInterfaceStyle = .light
+        case false: homeOverlay.overrideUserInterfaceStyle = .dark
+        // The Default wallpaper is a dynamic colour: it is already whichever the
+        // interface is, so there is nothing to override and following the
+        // appearance is the correct answer rather than a fallback.
+        case nil:   homeOverlay.overrideUserInterfaceStyle = .unspecified
+        }
     }
 
     /// Show the welcome once, and only to somebody who has never used this app.

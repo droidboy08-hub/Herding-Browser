@@ -286,6 +286,99 @@ enum WallpaperStore {
         }
     }
 
+    /// Whether what sits behind the cards is light enough that text on them has
+    /// to be dark — regardless of the appearance the user picked.
+    ///
+    /// `nil` means the wallpaper has no opinion, which is only the Default
+    /// preset: it is built from `systemBackground`, a dynamic colour, so it is
+    /// already whichever the interface is and there is nothing to resolve.
+    ///
+    /// The cards are clear glass. What is behind them is what their text is
+    /// read against, which `paired(with:)` above already says in as many words
+    /// — it just said it about one pair of gradients. Generalised: a light
+    /// wallpaper under a dark interface put white labels on a cream card and
+    /// made Home unreadable, and no amount of tuning the glass fixes a
+    /// backdrop and a foreground that are the same brightness.
+    ///
+    /// Sampled once and remembered. The picture is decoded to 8 points on its
+    /// longest edge for this, which is a hundred-odd pixels to average.
+    static var backdropIsLight: Bool? {
+        let signature = "\(kind.rawValue)|\(presetID ?? "")|\(builtInID ?? "")"
+        if signature == cachedBrightnessKey { return cachedBrightness }
+
+        let answer: Bool?
+        switch kind {
+        case .none:
+            answer = nil
+        case .preset:
+            // The Default preset is the dynamic one; everything else is a fixed
+            // ramp whose average is the whole answer.
+            answer = presetID == "system" ? nil : preset.map(Self.isLight)
+        case .builtIn:
+            answer = builtIn?.url.flatMap { Self.isLight(imageAt: $0) }
+        case .photo:
+            answer = Self.isLight(imageAt: photoURL)
+        case .video:
+            answer = Self.isLight(firstFrameOf: videoURL)
+        }
+        cachedBrightnessKey = signature
+        cachedBrightness = answer
+        return answer
+    }
+
+    private static var cachedBrightnessKey: String?
+    private static var cachedBrightness: Bool?
+
+    /// Above this, dark text on the card. Set at the midpoint rather than
+    /// somewhere clever: a backdrop near enough to the middle to make the
+    /// choice hard is one where either answer reads, and a threshold that
+    /// wanders is worse than one that is simply consistent.
+    private static let lightThreshold: CGFloat = 0.5
+
+    private static func isLight(_ preset: WallpaperPreset) -> Bool {
+        let values = preset.colors.compactMap { $0.resolvedLuminance }
+        guard !values.isEmpty else { return false }
+        return values.reduce(0, +) / CGFloat(values.count) > lightThreshold
+    }
+
+    private static func isLight(imageAt url: URL) -> Bool? {
+        guard let image = WallpaperImageLoader.image(at: url, maxPixel: 8),
+              let cg = image.cgImage else { return nil }
+        return averageLuminance(of: cg).map { $0 > lightThreshold }
+    }
+
+    private static func isLight(firstFrameOf url: URL) -> Bool? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 8, height: 8)
+        guard let cg = try? generator.copyCGImage(at: .zero, actualTime: nil) else { return nil }
+        return averageLuminance(of: cg).map { $0 > lightThreshold }
+    }
+
+    /// Mean luminance of every pixel, drawn into a small known-format buffer so
+    /// the bytes can be read without caring what the source was encoded as.
+    private static func averageLuminance(of image: CGImage) -> CGFloat? {
+        let width = max(1, min(image.width, 8))
+        let height = max(1, min(image.height, 8))
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(
+            data: &pixels, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        var total: CGFloat = 0
+        for index in stride(from: 0, to: pixels.count, by: 4) {
+            let r = CGFloat(pixels[index]) / 255
+            let g = CGFloat(pixels[index + 1]) / 255
+            let b = CGFloat(pixels[index + 2]) / 255
+            total += 0.299 * r + 0.587 * g + 0.114 * b
+        }
+        return total / CGFloat(width * height)
+    }
+
     /// The file currently in use, if there is one and it is still on disk.
     static var currentURL: URL? {
         let url: URL
@@ -475,5 +568,21 @@ private extension UIImage {
 private extension CGSize {
     func scaled(by factor: CGFloat) -> CGSize {
         CGSize(width: width * factor, height: height * factor)
+    }
+}
+
+
+private extension UIColor {
+    /// Luminance, with a dynamic colour resolved first.
+    ///
+    /// `getRed` on a dynamic colour answers for whatever trait collection is
+    /// current, which is exactly the circular reasoning this is trying to
+    /// escape — so anything that varies by appearance is resolved against the
+    /// light side and judged there.
+    var resolvedLuminance: CGFloat? {
+        let resolved = resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard resolved.getRed(&r, green: &g, blue: &b, alpha: &a) else { return nil }
+        return 0.299 * r + 0.587 * g + 0.114 * b
     }
 }
