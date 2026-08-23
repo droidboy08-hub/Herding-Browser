@@ -5,10 +5,23 @@ enum LegalDocument {
     case privacy
     case terms
 
+    /// For the navigation bar, where the app's name is not in question.
     var title: String {
         switch self {
         case .privacy: return "Privacy Policy"
         case .terms:   return "Terms of Use"
+        }
+    }
+
+    /// For the top of the document itself, where it is.
+    ///
+    /// A policy is read outside the app as often as inside it — screenshotted,
+    /// pasted into a review form, sent to somebody — and a page headed only
+    /// "Privacy Policy" does not say whose.
+    var heading: String {
+        switch self {
+        case .privacy: return "TitleLess Browser Privacy Policy"
+        case .terms:   return "TitleLess Browser Terms of Use"
         }
     }
 }
@@ -48,7 +61,8 @@ final class LegalViewController: UIViewController {
         textView.isEditable = false
         textView.alwaysBounceVertical = true
         textView.textContainerInset = UIEdgeInsets(top: 20, left: 18, bottom: 32, right: 18)
-        textView.attributedText = Self.render(document == .privacy ? Self.privacy : Self.terms)
+        textView.attributedText = Self.render(document == .privacy ? Self.privacy : Self.terms,
+                                              titled: document.heading)
         textView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(textView)
         NSLayoutConstraint.activate([
@@ -60,8 +74,19 @@ final class LegalViewController: UIViewController {
     }
 
     /// Lines starting with `#` are headings; everything else is body text.
-    private static func render(_ source: String) -> NSAttributedString {
+    private static func render(_ source: String, titled heading: String) -> NSAttributedString {
         let output = NSMutableAttributedString()
+
+        // The document's own title, a step above the section headings so the
+        // two do not read as the same rank.
+        let titleParagraph = NSMutableParagraphStyle()
+        titleParagraph.paragraphSpacing = 10
+        output.append(NSAttributedString(
+            string: heading + "\n",
+            attributes: [.font: UIFont.preferredFont(forTextStyle: .title1).bold,
+                         .foregroundColor: UIColor.label,
+                         .paragraphStyle: titleParagraph]))
+
         for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
             if line.hasPrefix("# ") {
                 output.append(NSAttributedString(
@@ -81,8 +106,8 @@ final class LegalViewController: UIViewController {
     // MARK: - The documents
 
     private static let privacy = """
-    This browser has no account, no sign-in, and no analytics. Nothing you do in \
-    it is sent to its developer, because there is nowhere for it to be sent.
+    TitleLess has no account, no sign-in, and no analytics. Nothing you do in it \
+    is sent to its developer, because there is nowhere for it to be sent.
 
     # What is stored, and where
 
@@ -93,17 +118,21 @@ final class LegalViewController: UIViewController {
     A private tab keeps its history, cookies and cache in memory alone. Closing \
     the app discards them.
 
-    Clearing website data in Settings removes cookies, caches and local storage \
-    for the profile you are in.
+    Clear History & Website Data, in Settings, removes the pages you have \
+    visited along with the cookies, caches and local storage of every site. \
+    Shred App Data removes everything TitleLess has stored — tabs, history, \
+    bookmarks, favourites, downloads list and every setting — and puts it back \
+    the way it arrived. Files you have already downloaded are left in Files, \
+    where they are yours to delete.
 
     # What connects to the network
 
     The pages you choose to visit, and whatever those pages themselves request. \
-    A page you open is between you and that site; this browser does not add \
+    A page you open is between you and that site; TitleLess does not add \
     anything to it or report it anywhere.
 
     Searches go to the search engine you picked in Settings, which is the only \
-    thing that engine receives — the browser does not attach an identifier.
+    thing that engine receives — TitleLess does not attach an identifier.
 
     Site icons are fetched from the site whose page you are on, over a \
     connection that carries no cookies and keeps nothing on disk.
@@ -116,8 +145,8 @@ final class LegalViewController: UIViewController {
     # What is not done
 
     No advertising identifier is read. No location, contacts, photos or \
-    microphone access is requested. Choosing a photo or video for the wallpaper \
-    uses the system picker, which hands over only the item you pick — the app \
+    microphone access is requested. Choosing a photo or video for the background \
+    uses the system picker, which hands over only the item you pick — TitleLess \
     cannot see the rest of your library.
 
     No crash reports or usage statistics are collected.
@@ -130,34 +159,35 @@ final class LegalViewController: UIViewController {
 
     # Children
 
-    This browser shows the web, which is not a curated place. It is not \
-    directed at children and has no content rating of its own.
+    TitleLess shows the web, which is not a curated place. It is not directed \
+    at children and has no content rating of its own.
 
     # Changes
 
-    This policy ships with the app. If it changes, it changes in an update, and \
-    the version it applies to is the version you are reading it in.
+    This policy ships with TitleLess. If it changes, it changes in an update, \
+    and the version it applies to is the version you are reading it in.
     """
 
     private static let terms = """
-    By using this browser you agree to what follows. If you don't, don't use it.
+    By using TitleLess you agree to what follows. If you don't, don't use it.
 
     # What this is
 
-    A web browser. It renders pages using WebKit, the engine iOS provides, and \
-    it can block requests and hide elements according to filter lists.
+    TitleLess is a web browser. It renders pages using WebKit, the engine iOS \
+    provides, and it can block requests and hide elements according to filter \
+    lists.
 
     # The web is not ours
 
     Pages you visit belong to the people who publish them, and are subject to \
-    their own terms. This browser is not affiliated with, endorsed by, or \
+    their own terms. TitleLess is not affiliated with, endorsed by, or \
     responsible for any site you open in it, and displaying a site is not a \
     claim about that site.
 
     # Filter lists
 
     The blocking rules are third-party data, maintained by people unconnected \
-    to this app. They can be wrong: a rule can break a page, and a page can \
+    to TitleLess. They can be wrong: a rule can break a page, and a page can \
     survive a rule. Lists you add yourself are your responsibility — a filter \
     list can hide or unhide anything on any page you visit, so only subscribe \
     to lists from a source you trust.
@@ -176,8 +206,18 @@ final class LegalViewController: UIViewController {
 
     # Open-source components
 
-    This app is built on open-source software, listed with its licences under \
+    TitleLess is built on open-source software, listed with its licences under \
     Licences. Those licences govern those components and nothing here \
     limits the rights they grant you.
     """
+}
+
+
+private extension UIFont {
+    /// Bold, while still scaling with the reader's text size — `boldSystemFont`
+    /// would pin it to one size and stop tracking Dynamic Type.
+    var bold: UIFont {
+        guard let descriptor = fontDescriptor.withSymbolicTraits(.traitBold) else { return self }
+        return UIFont(descriptor: descriptor, size: 0)
+    }
 }
