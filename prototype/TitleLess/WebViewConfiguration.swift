@@ -721,9 +721,25 @@ enum WebViewFactory {
 
         ask(url, 'xmlhttprequest').then(function(blocked) {
           if (!blocked) { return realSend.apply(self, args); }
-          // Report a network error rather than leaving the request pending
-          // forever, which is what a blocked request should look like.
+          // A blocked request has to *finish*, not vanish.
+          //
+          // Firing `error` and `loadend` alone was not enough, and a video
+          // player is exactly where that showed. The classic VAST loader waits
+          // on `onreadystatechange` for `readyState === 4`, not on `onerror`;
+          // with the real `send` never called, `readyState` stayed at 1 and no
+          // `readystatechange` was ever dispatched, so the player sat waiting
+          // on an ad tag that would never resolve either way and never started
+          // the video behind it. The request has to look failed, and looking
+          // failed in XHR means reaching DONE.
+          //
+          // `loadstart` too, for the same reason in reverse: the real `send`
+          // would have fired it, and code that pairs it with `loadend` to track
+          // requests in flight otherwise never balances.
           try {
+            self.dispatchEvent(new ProgressEvent('loadstart'));
+            Object.defineProperty(self, 'readyState',
+                                  { value: 4, configurable: true });
+            self.dispatchEvent(new Event('readystatechange'));
             self.dispatchEvent(new ProgressEvent('error'));
             self.dispatchEvent(new ProgressEvent('loadend'));
           } catch (e) {}
