@@ -35,6 +35,9 @@ final class BrowserViewController: UIViewController {
     /// the previous one left behind. The + forgot, which is why it stopped
     /// making tabs at all.
     private var nextSubmitOpensNewTab = false
+    /// Set while a pop-up's web view is being adopted as a tab, so the
+    /// selection callback does not load a page WebKit is already loading.
+    private var adoptingPopup = false
     private var scrollObs: NSKeyValueObservation?
     private var zoomObs: NSKeyValueObservation?
     private var swipeBindingObserver: NSObjectProtocol?
@@ -620,12 +623,22 @@ final class BrowserViewController: UIViewController {
     /// configuration is created, so there is no way to move an existing web view
     /// onto private storage. Everything a web view owns — its process, its
     /// caches, its back/forward list — goes with it.
-    private func installWebView() {
-        // Privacy defaults, injected scripts and the history bridge all live in
-        // WebViewFactory — see WebViewConfiguration.swift.
-        let config = WebViewFactory.makeConfiguration(profile: profile, scriptDelegate: self)
-
-        webView = WKWebView(frame: view.bounds, configuration: config)
+    /// - Parameter adopting: a web view to take over rather than create.
+    ///
+    ///   Used for pop-ups. `createWebViewWith` has to hand WebKit back a live
+    ///   web view built from the configuration it supplied, so the window
+    ///   cannot be made by the usual route — but once made it is an ordinary
+    ///   page, and everything below applies to it unchanged.
+    private func installWebView(adopting adopted: WKWebView? = nil) {
+        if let adopted {
+            webView = adopted
+        } else {
+            // Privacy defaults, injected scripts and the history bridge all live
+            // in WebViewFactory — see WebViewConfiguration.swift.
+            let config = WebViewFactory.makeConfiguration(profile: profile, scriptDelegate: self)
+            webView = WKWebView(frame: view.bounds, configuration: config)
+        }
+        webView.frame = view.bounds
         webView.translatesAutoresizingMaskIntoConstraints = false
         webView.allowsBackForwardNavigationGestures = true   // native edge-swipe = back/forward
         webView.navigationDelegate = self
@@ -1542,7 +1555,35 @@ final class BrowserViewController: UIViewController {
         webView.load(pageRequest(current))
     }
 
-    private func rebuildWebView() {
+    /// Take a pop-up's web view and make it the current tab.
+    ///
+    /// `createWebViewWith` must return a live web view built from WebKit's own
+    /// configuration, which is why a pop-up could not simply become a tab and
+    /// why it used to be shown as a sheet instead. But nothing says the web
+    /// view it returns cannot be *this* browser's web view from that moment on:
+    /// the outgoing page is banked as its tab's session state, the new view
+    /// takes its place, and WebKit loads the pop-up into it as normal.
+    ///
+    /// What is given up is the opener. The page that called `window.open` is no
+    /// longer running in a live web view, so nothing can be posted back to it —
+    /// which is exactly why sign-ins still get the sheet, and only they.
+    private func adoptPopupAsTab(_ adopted: WKWebView, url: URL) {
+        stashSessionState()
+        teardownWebView()
+        installWebView(adopting: adopted)
+        restoreChromeAfterWebViewSwap()
+
+        hasLoadedPage = true
+        homeOverlay.dismiss(animated: true)
+        // WebKit loads the request itself once this returns, so the tab is
+        // registered without one — `load(tab)` here would fetch the page a
+        // second time and throw away the window WebKit just created.
+        adoptingPopup = true
+        tabManager.addTab(url: url)
+        adoptingPopup = false
+    }
+
+    private func teardownWebView() {
         // Drop every observation first: they hold the old web view, and a KVO
         // callback arriving mid-swap would apply the old page's state to the new
         // one.
@@ -1556,8 +1597,15 @@ final class BrowserViewController: UIViewController {
         webView.uiDelegate = nil
         webView.stopLoading()
         webView.removeFromSuperview()
+    }
 
+    private func rebuildWebView() {
+        teardownWebView()
         installWebView()
+        restoreChromeAfterWebViewSwap()
+    }
+
+    private func restoreChromeAfterWebViewSwap() {
         // The web view is added on top of everything; put the chrome back in
         // front of it.
         view.bringSubviewToFront(topBar)
@@ -2564,10 +2612,10 @@ extension BrowserViewController: WKUIDelegate {
     ///    which is what the lists are for — ad and redirect domains are what
     ///    they cover best. An identity provider isn't in them; a redirector is.
     ///
-    /// Whatever survives opens as a **new tab** rather than replacing what you
-    /// were reading. That is both what a popup means and what saves the case
-    /// you're worried about: a bank's page stays loaded and logged in behind
-    /// the window it opened.
+    /// Whatever survives becomes a **new tab**, except a sign-in, which gets a
+    /// window of its own. A sign-in is the one case that needs the page behind
+    /// it left running: it has to post the result back to its opener, and an
+    /// opener whose web view has been taken away cannot receive it.
     func webView(_ webView: WKWebView,
                  createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction,
@@ -2597,6 +2645,19 @@ extension BrowserViewController: WKUIDelegate {
             return nil
         }
 
+        // Everything but a sign-in becomes a tab.
+        //
+        // Still a real web view, returned synchronously from the configuration
+        // WebKit supplied — returning nil instead tells the page its window was
+        // refused, and these pages check. The difference is where it goes: the
+        // browser adopts it as its current tab rather than presenting it as a
+        // sheet over the page behind.
+        guard signIn else {
+            let adopted = WKWebView(frame: view.bounds, configuration: configuration)
+            adoptPopupAsTab(adopted, url: url)
+            return adopted
+        }
+
         // A real window, returned synchronously, built from WebKit's own
         // configuration. Anything else — loading the URL in this view, opening
         // a tab, returning nil — leaves the opener relationship unmade, and
@@ -2604,6 +2665,13 @@ extension BrowserViewController: WKUIDelegate {
         // `PopupWindowController`.
         let popup = PopupWindowController(configuration: configuration)
         popup.webView.uiDelegate = self          // so `window.close()` reaches us
+        // Closes itself once the download it exists to start has started.
+        popup.onDownloadStarted = { [weak self] in
+            guard let self else { return }
+            announceDownloadStarted()
+            popupWindow?.dismiss(animated: true)
+            popupWindow = nil
+        }
         popup.modalPresentationStyle = .automatic
         popupWindow = popup
         present(popup, animated: true)
@@ -2719,6 +2787,7 @@ extension BrowserViewController: TabManagerDelegate {
             return
         }
         hasLoadedPage = true
+        guard !adoptingPopup else { return }
         load(tab)
     }
 }

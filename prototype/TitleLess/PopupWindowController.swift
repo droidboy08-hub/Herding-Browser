@@ -26,6 +26,8 @@ import WebKit
 final class PopupWindowController: UIViewController {
 
     let webView: WKWebView
+    /// A download started in here. The browser dismisses the window and says so.
+    var onDownloadStarted: (() -> Void)?
     private let bar = UIView()
     private let originLabel = UILabel()
     private var titleObservation: NSKeyValueObservation?
@@ -93,5 +95,57 @@ final class PopupWindowController: UIViewController {
         titleObservation = webView.observe(\.url, options: [.initial, .new]) { [weak self] view, _ in
             Task { @MainActor in self?.originLabel.text = view.url?.host }
         }
+
+        // Its own navigation delegate, and deliberately not the browser's.
+        //
+        // This window had none at all, which is why a download started in here
+        // went nowhere: every download hook in this app is a
+        // `WKNavigationDelegate` method, so a page could announce that a file
+        // was on its way and WebKit would then have nobody to hand it to.
+        //
+        // Not the browser's, though. That delegate is written throughout as if
+        // its web view were *the* web view — it drives the address capsule, the
+        // history record, the tab's session state. Pointing it at a second web
+        // view would have this window quietly rewriting the state of the page
+        // behind it. So this handles the two things a pop-up genuinely needs
+        // and nothing else.
+        webView.navigationDelegate = self
+    }
+}
+
+// MARK: - Downloads
+
+extension PopupWindowController: WKNavigationDelegate {
+
+    /// The same test the browser makes: anything WebKit cannot display, or
+    /// anything the server marks as an attachment, is a download.
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationResponse: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        guard navigationResponse.isForMainFrame else {
+            decisionHandler(.allow)
+            return
+        }
+        let isAttachment = (navigationResponse.response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Disposition")?
+            .lowercased().contains("attachment") ?? false
+
+        decisionHandler(!navigationResponse.canShowMIMEType || isAttachment ? .download : .allow)
+    }
+
+    func webView(_ webView: WKWebView,
+                 navigationResponse: WKNavigationResponse,
+                 didBecome download: WKDownload) {
+        DownloadManager.shared.adopt(
+            download, suggestedName: navigationResponse.response.suggestedFilename)
+        onDownloadStarted?()
+    }
+
+    /// A link carrying the `download` attribute starts life as a navigation.
+    func webView(_ webView: WKWebView,
+                 navigationAction: WKNavigationAction,
+                 didBecome download: WKDownload) {
+        DownloadManager.shared.adopt(download)
+        onDownloadStarted?()
     }
 }
