@@ -2,7 +2,7 @@ import UIKit
 
 /// How Home behaves, as distinct from what it looks like.
 ///
-/// Three switches that answer the same question from different angles — what
+/// Four switches that answer the same question from different angles — what
 /// Home shows when it opens, and how you get to it. They sat loose on the
 /// settings card between *Buttons* and *Appearance*, which put the mechanics of
 /// one screen in the middle of the app's looks. Together behind one row they
@@ -28,6 +28,9 @@ final class HomeBehaviourViewController: UIViewController {
             Row(title: "Always show panel",
                 isOn: { Settings.startBoxShowsPanel },
                 set: { Settings.startBoxShowsPanel = $0 }),
+            Row(title: "Auto-open keyboard",
+                isOn: { Settings.autoOpenKeyboard },
+                set: { Settings.autoOpenKeyboard = $0 }),
             Row(title: "Open Home by swiping down",
                 isOn: { Settings.swipeOpensStartBox },
                 set: { on in

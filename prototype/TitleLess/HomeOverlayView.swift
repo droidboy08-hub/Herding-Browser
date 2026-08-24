@@ -450,6 +450,44 @@ final class HomeOverlayView: UIView {
 
     // MARK: - Keyboard
 
+    /// Whether the box is currently up. Not the same question as `isHidden`,
+    /// which is false from the moment the view is created.
+    private var isPresented = false
+
+    /// Set when the box has been opened and the keyboard is wanted with it.
+    private var wantsKeyboardOnAppear = false
+
+    /// Give the field focus, if Home Behaviour asked for it and the field can
+    /// actually take it.
+    ///
+    /// Called from every point where the answer might have changed — the box
+    /// opening, the view reaching a window, the controller appearing — and
+    /// harmless from all of them, because the request survives until it is
+    /// granted and is dropped once it is. `becomeFirstResponder` reports
+    /// whether it worked, which is the part the first version of this ignored.
+    func focusFieldIfWanted() {
+        guard wantsKeyboardOnAppear, !isHidden, window != nil else { return }
+        guard !field.isFirstResponder else { wantsKeyboardOnAppear = false; return }
+        // A view still waiting on its first layout will refuse.
+        layoutIfNeeded()
+        if field.becomeFirstResponder() {
+            wantsKeyboardOnAppear = false
+            return
+        }
+        // Once more on the next turn of the runloop, by which time the
+        // hierarchy this was asked from has finished settling.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, wantsKeyboardOnAppear, !isHidden, window != nil else { return }
+            wantsKeyboardOnAppear = false
+            field.becomeFirstResponder()
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        focusFieldIfWanted()
+    }
+
     @objc private func keyboardChanged(_ note: Notification) {
         guard !isHidden,
               let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
@@ -475,10 +513,40 @@ final class HomeOverlayView: UIView {
     ///   edit it rather than to start something new. Carried into the field and
     ///   selected, so typing replaces it and a return keeps you in this tab.
     func present(over hasPage: Bool, animated: Bool, editing: URL? = nil) {
+        // Already up, and this is being asked to open it again.
+        //
+        // Closing the last tab does exactly that: the box is on screen, the tab
+        // panel is open, and `didSelect(nil)` calls `showHome`. Everything
+        // below is written for a box arriving from nothing — the card starts at
+        // `alpha = 0` and springs in, the keyboard is assumed down, the field
+        // is emptied — and running it over a box that is already there read as
+        // a flash, the whole card blinking out and back while the address it
+        // was holding vanished.
+        //
+        // So a second opening changes what has actually changed and leaves the
+        // rest alone.
+        // Tracked rather than read off `isHidden`, which cannot answer this.
+        //
+        // A view starts life visible, and this one is only ever hidden by
+        // `dismiss` — so at launch, before the box has been opened even once,
+        // `!isHidden` is already true. Gating on that made the first opening of
+        // the app look like a re-opening: the entrance was skipped, the
+        // keyboard state was left alone, and the request for focus was never
+        // made at all.
+        let wasPresented = isPresented
+        isPresented = true
         isHidden = false
         panel.historyChanged()      // whatever loaded while we were away
-        solidBackdrop.alpha = hasPage ? 0 : 1
-        blurBackdrop.alpha = hasPage ? 1 : 0
+
+        // The backdrop swaps when the page behind goes away, which is a real
+        // change and worth seeing — just not worth being startled by.
+        let backdrops = {
+            self.solidBackdrop.alpha = hasPage ? 0 : 1
+            self.blurBackdrop.alpha = hasPage ? 1 : 0
+        }
+        if wasPresented { UIView.animate(withDuration: 0.25, animations: backdrops) }
+        else          { backdrops() }
+
         // Shown whether or not a page is behind. Covering the page is the point:
         // the box is where you go to leave the page, and a wallpaper you only
         // ever see on a fresh launch is a wallpaper you never see.
@@ -487,15 +555,45 @@ final class HomeOverlayView: UIView {
         // The box opens with the keyboard down — it stays down until the field
         // is tapped — so the panel starts at the tall size. Without this it
         // would keep whatever height the last keyboard event left behind.
-        keyboardHeight = 0
-        panelHeight.constant = Self.tallPanelHeight
-        field.text = editing?.absoluteString ?? ""
+        //
+        // Not when it was already up: the keyboard may well be showing, and
+        // declaring it down would resize the panel out from under it.
+        if !wasPresented {
+            keyboardHeight = 0
+            panelHeight.constant = Self.tallPanelHeight
+        }
+
+        let address = editing?.absoluteString ?? ""
+        if wasPresented, field.text != address {
+            // The address belonged to a tab that has just been closed. Fading it
+            // out says that; swapping it for nothing between frames does not.
+            UIView.transition(with: field, duration: 0.2,
+                              options: [.transitionCrossDissolve, .allowUserInteraction]) {
+                self.field.text = address
+            }
+        } else {
+            field.text = address
+        }
         if editing != nil {
             // Focused and fully selected: the address is there to be read or
             // replaced, and having to clear it first would make editing it
             // slower than retyping it.
             field.becomeFirstResponder()
             field.selectAll(nil)
+        } else if !wasPresented, Settings.autoOpenKeyboard {
+            // Asked for, in Home Behaviour. Every genuine opening of the box,
+            // launch included — but not a re-present over a box that is already
+            // up, where the keyboard would arrive in answer to something the
+            // user did not do. Closing the last tab is that case.
+            //
+            // Recorded rather than done here. `becomeFirstResponder` is
+            // refused by a view that is not yet in a window and laid out, and
+            // both are true at the moments this is called from: at launch
+            // `present` runs inside `viewDidLoad`, and every later opening asks
+            // one line after `isHidden = false`. It returned false and said
+            // nothing, which is why the switch appeared to do nothing at all.
+            wantsKeyboardOnAppear = true
+            focusFieldIfWanted()
         }
 
         // Pinned open, the panel comes up with the box instead of waiting for a
@@ -513,7 +611,7 @@ final class HomeOverlayView: UIView {
             self.shadowHost.transform = .identity
             self.shadowHost.alpha = 1
         }
-        if animated {
+        if animated && !wasPresented {
             let start = CGAffineTransform(translationX: 0, y: 26).scaledBy(x: 0.95, y: 0.95)
             card.transform = start
             shadowHost.transform = start
@@ -524,10 +622,14 @@ final class HomeOverlayView: UIView {
         } else {
             reveal()
         }
-        // Keyboard stays down until the user taps the field.
+        // Keyboard stays down until the field is tapped, unless Home Behaviour
+        // says otherwise — see `Settings.autoOpenKeyboard` above.
     }
 
     func dismiss(animated: Bool) {
+        isPresented = false
+        // A keyboard asked for by a box that is closing is no longer wanted.
+        wantsKeyboardOnAppear = false
         field.resignFirstResponder()
         panel.isHidden = true
         panel.alpha = 1

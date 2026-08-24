@@ -244,6 +244,20 @@ enum Settings {
         set { d.set(newValue, forKey: "settings.requirePrivateAuth") }
     }
 
+    /// Raise the keyboard as soon as Home opens, rather than waiting for the
+    /// field to be tapped.
+    ///
+    /// Off by default, and the default is the argument for having the switch at
+    /// all. Home is two things at once: somewhere to type an address, and
+    /// somewhere to reach tabs, history, downloads and settings. A keyboard
+    /// that arrives uninvited answers the first and buries the second under
+    /// half a screen of keys. For somebody who only ever opens Home to type,
+    /// that is a tap saved every time.
+    static var autoOpenKeyboard: Bool {
+        get { bool("settings.autoOpenKeyboard", default: false) }
+        set { d.set(newValue, forKey: "settings.autoOpenKeyboard") }
+    }
+
     /// Upgrade http:// navigations to https://.
     static var httpsOnly: Bool {
         get { bool("settings.httpsOnly", default: false) }

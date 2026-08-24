@@ -377,6 +377,9 @@ final class BrowserViewController: UIViewController {
         // No swipe-to-dismiss: the button is what records it as seen, and a
         // screen dismissed around that would come back on the next launch.
         welcome.isModalInPresentation = true
+        // It is presented over Home, so it holds the first responder while it
+        // is up. If the keyboard was wanted, it is wanted now.
+        welcome.onDismiss = { [weak self] in self?.homeOverlay.focusFieldIfWanted() }
         present(welcome, animated: false)
     }
 
@@ -386,6 +389,9 @@ final class BrowserViewController: UIViewController {
         // The window doesn't exist yet in `viewDidLoad`, so the style set there
         // lands on nothing.
         applyAppearance()
+        // Launch opens Home from `viewDidLoad`, where nothing can take focus
+        // yet. This is the first moment it can — see `focusFieldIfWanted`.
+        homeOverlay.focusFieldIfWanted()
     }
 
     /// Start building the filter engine now, rather than on the first request
