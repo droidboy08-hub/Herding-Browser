@@ -47,6 +47,7 @@ final class StartPanelView: UIView {
     var onShowPasswords: (() -> Void)?
     var onShowLicences: (() -> Void)?
     var onOpenSupport: ((SupportDestination) -> Void)?
+    var onShowSupport: (() -> Void)?
     /// Ask before doing something that cannot be undone. A view can't present
     /// an alert, so the browser is handed the question and the consequence.
     var onConfirmDestructive: ((String, String, @escaping () -> Void) -> Void)?
@@ -707,10 +708,13 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 [.version],
                 // Only shown once there is somewhere for them to go — see
                 // `SupportInfo`.
-                SupportInfo.hasWebsite ? [.action("Website")] : [],
-                SupportInfo.hasSupportURL ? [.action("Help")] : [],
-                SupportInfo.hasContact ? [.action("Send Feedback"),
-                                          .action("Report a Site Problem")] : [],
+                // Website, Help, Send Feedback and Report a Site Problem all
+                // live behind this. Four ways of reaching us sat between the
+                // version number and the legal documents, which is the stretch
+                // of Settings people scroll past — and About is left saying
+                // what this is, how to reach us, then the paperwork.
+                (SupportInfo.hasWebsite || SupportInfo.hasSupportURL
+                    || SupportInfo.hasContact) ? [.action("Support")] : [],
                 [.action("Privacy Policy"), .action("Terms of Use"), .action("Licences")],
             ].flatMap { $0 }),
         ]
@@ -1130,10 +1134,7 @@ extension StartPanelView: UITableViewDataSource, UITableViewDelegate {
                 case "App Icon":        onShowAppIcon?()
                 case "Passwords":       onShowPasswords?()
                 case "Licences":        onShowLicences?()
-                case "Website":         onOpenSupport?(.website)
-                case "Help":            onOpenSupport?(.help)
-                case "Send Feedback":   onOpenSupport?(.feedback)
-                case "Report a Site Problem": onOpenSupport?(.siteProblem)
+                case "Support":         onShowSupport?()
                 case "Privacy Policy":  onShowLegal?(.privacy)
                 case "Terms of Use":    onShowLegal?(.terms)
                 default:

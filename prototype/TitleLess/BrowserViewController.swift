@@ -1285,6 +1285,35 @@ final class BrowserViewController: UIViewController {
         return signInDomains.contains(labels.suffix(3).joined(separator: "."))
     }
 
+    /// Open a support destination: a page of ours, or a pre-addressed mail.
+    ///
+    /// Reached from two places now — the Website row on the About card, and the
+    /// three rows behind Support — so it is a method rather than a closure.
+    private func openSupport(_ destination: SupportDestination) {
+        switch destination {
+        // The pages are sheets rather than tabs.
+        //
+        // Opened as a tab, they were the tab's only history entry, so the back
+        // swipe had nowhere to go and left a blank white page behind. It also
+        // put a page nobody chose to browse into the tab list, and left the
+        // reader to find their own way back. A Safari sheet has its own chrome,
+        // its own Done button, and no way to strand anybody.
+        case .website:
+            presentSheet(SupportInfo.websiteURL)
+        case .help:
+            presentSheet(SupportInfo.supportURL)
+        case .feedback:
+            guard let url = SupportInfo.feedbackURL(subject: "Feedback") else { return }
+            UIApplication.shared.open(url)
+        case .siteProblem:
+            // The address of the page being complained about, and nothing else
+            // about the session.
+            let site = webView.url?.absoluteString ?? "no page open"
+            guard let url = SupportInfo.feedbackURL(subject: "Site problem: \(site)") else { return }
+            UIApplication.shared.open(url)
+        }
+    }
+
     /// Open one of the app's own pages in a Safari sheet.
     private func presentSheet(_ address: String) {
         guard let url = URL(string: address) else { return }
@@ -1485,6 +1514,20 @@ final class BrowserViewController: UIViewController {
             present(UINavigationController(rootViewController: media), animated: true)
         }
         homeOverlay.panel.onShowPasswords = { [weak self] in self?.presentPasswordsInfo() }
+        homeOverlay.panel.onShowSupport = { [weak self] in
+            guard let self else { return }
+            let support = SupportOptionsViewController()
+            // Every destination opens something over this screen — a Safari
+            // sheet or a mail composer — so it is dismissed first and the
+            // browser opens it, the same arrangement Safeguards uses for the
+            // screens it links to.
+            support.onOpen = { [weak self] destination in
+                self?.presentedViewController?.dismiss(animated: true) {
+                    self?.openSupport(destination)
+                }
+            }
+            present(UINavigationController(rootViewController: support), animated: true)
+        }
         homeOverlay.panel.onShowSafeguards = { [weak self] in
             guard let self else { return }
             let safeguards = SafeguardsViewController()
@@ -1523,30 +1566,7 @@ final class BrowserViewController: UIViewController {
             webView.reload()
         }
         homeOverlay.panel.onOpenSupport = { [weak self] destination in
-            guard let self else { return }
-            switch destination {
-            // Both are sheets rather than tabs.
-            //
-            // Opened as a tab, these pages were the tab's only history entry,
-            // so the back swipe had nowhere to go and left a blank white page
-            // behind. It also put a page nobody chose to browse into the tab
-            // list, and left the reader to find their own way back. A Safari
-            // sheet has its own chrome, its own Done button, and no way to
-            // strand anybody.
-            case .website:
-                presentSheet(SupportInfo.websiteURL)
-            case .help:
-                presentSheet(SupportInfo.supportURL)
-            case .feedback:
-                guard let url = SupportInfo.feedbackURL(subject: "Feedback") else { return }
-                UIApplication.shared.open(url)
-            case .siteProblem:
-                // The address of the page being complained about, and nothing
-                // else about the session.
-                let site = webView.url?.absoluteString ?? "no page open"
-                guard let url = SupportInfo.feedbackURL(subject: "Site problem: \(site)") else { return }
-                UIApplication.shared.open(url)
-            }
+            self?.openSupport(destination)
         }
         homeOverlay.panel.onConfirmDestructive = { [weak self] title, consequence, act in
             guard let self else { return }
