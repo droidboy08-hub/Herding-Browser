@@ -319,7 +319,7 @@ enum WallpaperStore {
         case .photo:
             answer = Self.isLight(imageAt: photoURL)
         case .video:
-            answer = Self.isLight(firstFrameOf: videoURL)
+            answer = Self.videoIsLight
         }
         cachedBrightnessKey = signature
         cachedBrightness = answer
@@ -347,18 +347,66 @@ enum WallpaperStore {
         return averageLuminance(of: cg).map { $0 > lightThreshold }
     }
 
-    private static func isLight(firstFrameOf url: URL) -> Bool? {
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 8, height: 8)
-        guard let cg = try? generator.copyCGImage(at: .zero, actualTime: nil) else { return nil }
-        return averageLuminance(of: cg).map { $0 > lightThreshold }
+    /// A video's brightness, measured once when it is installed rather than
+    /// every time the answer is wanted.
+    ///
+    /// Two reasons, and the deprecation is the smaller one. Pulling a frame out
+    /// of a video is real work — decode a track, seek, render — and the caller
+    /// is a synchronous property read during a layout pass, which is the worst
+    /// possible place for it. Everything else here is arithmetic on a handful
+    /// of bytes. So the frame is sampled off the main thread at install time
+    /// and the verdict is all that is kept.
+    ///
+    /// `nil` until it lands, which means Home follows the appearance for the
+    /// moment it takes; `.appearanceChanged` is posted when the answer arrives
+    /// and Home re-reads it. Also nil for a video installed before this
+    /// existed — `sampleVideoBrightnessIfNeeded` fills those in on first read.
+    private static var videoIsLight: Bool? {
+        get {
+            sampleVideoBrightnessIfNeeded()
+            return UserDefaults.standard.object(forKey: videoBrightnessKey) as? Bool
+        }
+        set { UserDefaults.standard.set(newValue, forKey: videoBrightnessKey) }
+    }
+
+    private static let videoBrightnessKey = "settings.wallpaperVideoIsLight"
+    private static var samplingVideo = false
+
+    /// Measure the installed video if its verdict is missing.
+    static func sampleVideoBrightnessIfNeeded() {
+        guard UserDefaults.standard.object(forKey: videoBrightnessKey) == nil,
+              !samplingVideo,
+              FileManager.default.fileExists(atPath: videoURL.path) else { return }
+        samplingVideo = true
+
+        let url = videoURL
+        Task.detached(priority: .utility) {
+            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 8, height: 8)
+            let light: Bool?
+            if let cg = try? await generator.image(at: .zero).image {
+                light = averageLuminance(of: cg).map { $0 > lightThreshold }
+            } else {
+                light = nil
+            }
+            await MainActor.run {
+                samplingVideo = false
+                guard let light else { return }
+                videoIsLight = light
+                // Whatever is on screen decided its legibility without this.
+                cachedBrightnessKey = nil
+                NotificationCenter.default.post(name: .appearanceChanged, object: nil)
+            }
+        }
     }
 
     /// Mean luminance of every pixel, drawn into a small known-format buffer so
     /// the bytes can be read without caring what the source was encoded as.
-    private static func averageLuminance(of image: CGImage) -> CGFloat? {
+    ///
+    /// `nonisolated` because the video path calls it from a detached task —
+    /// it touches nothing but its arguments and a local buffer.
+    private nonisolated static func averageLuminance(of image: CGImage) -> CGFloat? {
         let width = max(1, min(image.width, 8))
         let height = max(1, min(image.height, 8))
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
@@ -407,7 +455,10 @@ enum WallpaperStore {
     static func install(videoAt source: URL) throws {
         try? FileManager.default.removeItem(at: videoURL)
         try FileManager.default.copyItem(at: source, to: videoURL)
+        // The previous video's verdict belongs to a file that is gone.
+        UserDefaults.standard.removeObject(forKey: videoBrightnessKey)
         kind = .video
+        sampleVideoBrightnessIfNeeded()
     }
 
     static func clear() {
