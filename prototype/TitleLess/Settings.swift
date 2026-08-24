@@ -244,6 +244,40 @@ enum Settings {
         set { d.set(newValue, forKey: "settings.requirePrivateAuth") }
     }
 
+    /// What the strip across the top of a page does.
+    ///
+    /// The strip is an opaque lid over the notch, painted with the page's own
+    /// theme colour. The web view runs underneath it — `contentInsetAdjustment`
+    /// is `.always`, so the page starts below the safe area — which means the
+    /// lid is the only thing stopping content passing under the Dynamic Island
+    /// as it scrolls.
+    ///
+    /// Three states rather than two switches, because "hide when scrolling" and
+    /// "never show" are answers to one question and a pair of toggles would let
+    /// you pick a combination that means nothing.
+    enum TopStripMode: String, CaseIterable {
+        case always, hideOnScroll, never
+
+        var name: String {
+            switch self {
+            case .always:       return "Always Show"
+            case .hideOnScroll: return "Hide When Scrolling"
+            case .never:        return "Never Show"
+            }
+        }
+    }
+
+    static var topStripMode: TopStripMode {
+        get {
+            d.string(forKey: "settings.topStripMode")
+                .flatMap(TopStripMode.init(rawValue:)) ?? .always
+        }
+        set {
+            d.set(newValue.rawValue, forKey: "settings.topStripMode")
+            NotificationCenter.default.post(name: .topStripModeChanged, object: nil)
+        }
+    }
+
     /// Raise the keyboard as soon as Home opens, rather than waiting for the
     /// field to be tapped.
     ///
@@ -462,6 +496,9 @@ extension Notification.Name {
     static let appearanceChanged = Notification.Name("TitleLess.appearanceChanged")
     /// The swipe-down binding moved, so the gesture and the capsule swap jobs.
     static let swipeBindingChanged = Notification.Name("TitleLess.swipeBindingChanged")
+    /// The top strip's mode changed, so it has to show or hide itself now
+    /// rather than waiting for the next scroll.
+    static let topStripModeChanged = Notification.Name("TitleLess.topStripModeChanged")
     /// Something changed that alters which scripts are injected into a page.
     /// The listener rebuilds the script set and reloads, because a viewport is
     /// applied while the document is loading and can't be revised afterwards.

@@ -57,6 +57,7 @@ final class BrowserViewController: UIViewController {
     private var scrollObs: NSKeyValueObservation?
     private var zoomObs: NSKeyValueObservation?
     private var swipeBindingObserver: NSObjectProtocol?
+    private var topStripObserver: NSObjectProtocol?
     private var lastScrollY: CGFloat = 0
     /// The second window, while one is open. See `PopupWindowController`.
     private weak var popupWindow: PopupWindowController?
@@ -655,6 +656,7 @@ final class BrowserViewController: UIViewController {
         topBar.translatesAutoresizingMaskIntoConstraints = false
         topBar.backgroundColor = .systemBackground
         view.addSubview(topBar)
+        applyTopStripMode()
         NSLayoutConstraint.activate([
             topBar.topAnchor.constraint(equalTo: view.topAnchor),
             topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -909,6 +911,7 @@ final class BrowserViewController: UIViewController {
         // At the top, always shown, whatever the last direction was.
         if y <= -scrollView.adjustedContentInset.top + 1 {
             addressCapsule.setConcealed(false)
+            setTopStripConcealed(false)
             return
         }
         // Rubber-banding past the bottom reverses the offset without the reader
@@ -919,6 +922,72 @@ final class BrowserViewController: UIViewController {
         let moved = y - lastScrollY
         guard abs(moved) > 6 else { return }
         addressCapsule.setConcealed(moved > 0)
+        setTopStripConcealed(moved > 0)
+    }
+
+    /// Show or hide the top strip, without touching the page underneath it.
+    ///
+    /// Faded, not moved, and the layout is left completely alone — which is the
+    /// whole design. The web view spans the full height with
+    /// `contentInsetAdjustmentBehavior = .always`, so the strip is a lid over
+    /// content that is already positioned correctly. Changing insets to make
+    /// room, which is the obvious way to do this, is what broke it three times
+    /// before: UIKit does not move `contentOffset` when `contentInset` changes,
+    /// so every recomputation was a chance to leave a page resting a safe area
+    /// too high and drawn under the Dynamic Island. Nothing here can reproduce
+    /// that, because nothing here is a layout change.
+    ///
+    /// A fade rather than a slide for a smaller reason: a translating bar drags
+    /// a hard edge across the page, where a fade simply hands the strip back to
+    /// whatever is under it.
+    private func setTopStripConcealed(_ concealed: Bool) {
+        guard Settings.topStripMode == .hideOnScroll else { return }
+        let wanted: CGFloat = concealed ? 0 : 1
+        guard topBar.alpha != wanted else { return }
+        topStripConcealed = concealed
+        UIView.animate(withDuration: 0.22, delay: 0, options: [.beginFromCurrentState]) {
+            self.topBar.alpha = wanted
+        }
+        // The clock and the battery go with it. A strip that fades out from
+        // under them leaves them floating over the page, which is worse than
+        // either state on its own.
+        publishStatusBarState()
+    }
+
+    /// Whether the strip is currently faded out. Only meaningful while the mode
+    /// is `hideOnScroll`; the other two answer from the mode alone.
+    private var topStripConcealed = false
+
+    /// Tell SwiftUI whether the status bar should be up.
+    ///
+    /// Published rather than overridden. The app is a `WindowGroup` wrapping
+    /// this controller in a `UIViewControllerRepresentable`, and the hosting
+    /// controller owns the status bar — a `prefersStatusBarHidden` override
+    /// here is never asked, which is the same shape of dead code as the
+    /// `preferredStatusBarStyle` below and the `UIStatusBarHidden` key that
+    /// looked like it should have done the job.
+    private func publishStatusBarState() {
+        let hidden: Bool
+        switch Settings.topStripMode {
+        case .always:       hidden = false
+        case .never:        hidden = true
+        case .hideOnScroll: hidden = topStripConcealed
+        }
+        guard StatusBarState.shared.hidden != hidden else { return }
+        StatusBarState.shared.hidden = hidden
+    }
+
+    /// Put the strip into whatever state the setting now asks for.
+    private func applyTopStripMode() {
+        topStripConcealed = false
+        switch Settings.topStripMode {
+        case .always:       topBar.isHidden = false; topBar.alpha = 1
+        case .never:        topBar.isHidden = true
+        // Shown until a scroll says otherwise — the same rule the address
+        // capsule follows, and the reason both are visible at the top of a page.
+        case .hideOnScroll: topBar.isHidden = false; topBar.alpha = 1
+        }
+        publishStatusBarState()
     }
 
     override func viewDidLayoutSubviews() {
@@ -1560,6 +1629,11 @@ final class BrowserViewController: UIViewController {
             forName: .swipeBindingChanged, object: nil, queue: .main
         ) { [weak self] _ in
             self?.configureSwipeDownBehaviour()
+        }
+        topStripObserver = NotificationCenter.default.addObserver(
+            forName: .topStripModeChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.applyTopStripMode()
         }
         homeOverlay.onStartNewTab = { [weak self] in self?.nextSubmitOpensNewTab = true }
         homeOverlay.onDismissed = { [weak self] in

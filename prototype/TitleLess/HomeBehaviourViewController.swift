@@ -12,32 +12,34 @@ import UIKit
 /// Home acts.
 final class HomeBehaviourViewController: UIViewController {
 
-    private struct Row {
-        let title: String
-        let isOn: () -> Bool
-        let set: (Bool) -> Void
+    private enum Row {
+        case toggle(String, isOn: () -> Bool, set: (Bool) -> Void)
+        /// A row with a menu on its right-hand side, for a setting with more
+        /// than two answers.
+        case topStrip
     }
 
     private let table = UITableView(frame: .zero, style: .insetGrouped)
 
     private var rows: [Row] {
         [
-            Row(title: "Favourites",
-                isOn: { Settings.showFavourites },
-                set: { Settings.showFavourites = $0 }),
-            Row(title: "Always show panel",
-                isOn: { Settings.startBoxShowsPanel },
-                set: { Settings.startBoxShowsPanel = $0 }),
-            Row(title: "Auto-open keyboard",
-                isOn: { Settings.autoOpenKeyboard },
-                set: { Settings.autoOpenKeyboard = $0 }),
-            Row(title: "Open Home by swiping down",
-                isOn: { Settings.swipeOpensStartBox },
-                set: { on in
-                    Settings.swipeOpensStartBox = on
-                    // The capsule's tap changes with it — see `swipeOpensStartBox`.
-                    NotificationCenter.default.post(name: .swipeBindingChanged, object: nil)
-                }),
+            .toggle("Favourites",
+                    isOn: { Settings.showFavourites },
+                    set: { Settings.showFavourites = $0 }),
+            .toggle("Always show panel",
+                    isOn: { Settings.startBoxShowsPanel },
+                    set: { Settings.startBoxShowsPanel = $0 }),
+            .toggle("Auto-open keyboard",
+                    isOn: { Settings.autoOpenKeyboard },
+                    set: { Settings.autoOpenKeyboard = $0 }),
+            .toggle("Open Home by swiping down",
+                    isOn: { Settings.swipeOpensStartBox },
+                    set: { on in
+                        Settings.swipeOpensStartBox = on
+                        // The capsule's tap changes with it — see `swipeOpensStartBox`.
+                        NotificationCenter.default.post(name: .swipeBindingChanged, object: nil)
+                    }),
+            .topStrip,
         ]
     }
 
@@ -71,17 +73,49 @@ extension HomeBehaviourViewController: UITableViewDataSource {
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath)
-        let row = rows[indexPath.row]
-
         var cfg = UIListContentConfiguration.cell()
-        cfg.text = row.title
-        cell.contentConfiguration = cfg
         cell.selectionStyle = .none
 
-        let toggle = UISwitch()
-        toggle.isOn = row.isOn()
-        toggle.addAction(UIAction { _ in row.set(toggle.isOn) }, for: .valueChanged)
-        cell.accessoryView = toggle
+        switch rows[indexPath.row] {
+        case .toggle(let title, let isOn, let set):
+            cfg.text = title
+            let toggle = UISwitch()
+            toggle.isOn = isOn()
+            toggle.addAction(UIAction { _ in set(toggle.isOn) }, for: .valueChanged)
+            cell.accessoryView = toggle
+
+        case .topStrip:
+            cfg.text = "Top Strip"
+            let button = UIButton(type: .system)
+            button.showsMenuAsPrimaryAction = true
+            applyTopStripMode(to: button)
+            cell.accessoryView = button
+        }
+
+        cell.contentConfiguration = cfg
         return cell
+    }
+
+    func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+        "The strip across the top of a page, painted with that page's own "
+        + "colour. Hidden, the page scrolls under the notch."
+    }
+
+    /// Name the chosen mode on the button and build the menu that changes it.
+    /// Called again on the same button once one is picked.
+    private func applyTopStripMode(to button: UIButton) {
+        let current = Settings.topStripMode
+        button.setTitle(current.name, for: .normal)
+        button.sizeToFit()
+        button.superview?.setNeedsLayout()
+
+        button.menu = UIMenu(title: "", children: Settings.TopStripMode.allCases.map { mode in
+            UIAction(title: mode.name, state: mode == current ? .on : .off) {
+                [weak self, weak button] _ in
+                Settings.topStripMode = mode
+                guard let button else { return }
+                self?.applyTopStripMode(to: button)
+            }
+        })
     }
 }
