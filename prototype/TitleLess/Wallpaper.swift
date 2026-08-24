@@ -333,7 +333,10 @@ enum WallpaperStore {
     /// somewhere clever: a backdrop near enough to the middle to make the
     /// choice hard is one where either answer reads, and a threshold that
     /// wanders is worse than one that is simply consistent.
-    private static let lightThreshold: CGFloat = 0.5
+    /// `nonisolated` for the same reason `averageLuminance` is: the detached
+    /// task that samples a video frame compares against it. A `let` holding a
+    /// `CGFloat` has nothing to race over.
+    private nonisolated static let lightThreshold: CGFloat = 0.5
 
     private static func isLight(_ preset: WallpaperPreset) -> Bool {
         let values = preset.colors.compactMap { $0.resolvedLuminance }
