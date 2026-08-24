@@ -153,6 +153,25 @@ final class HomeOverlayView: UIView {
             equalToConstant: Self.tallPanelHeight)
         panelHeight.priority = .defaultHigh
         panelHeight.isActive = true
+
+        // When the two cards together do not fit — a keyboard up, a tall panel,
+        // a favourites row adding its fifty points — something has to give, and
+        // the stack decides which by comparing compression resistance. Left
+        // equal, it took the height out of whichever it felt like, and when
+        // that was the card the title was pushed out of the top of it and
+        // clipped: "Where to?" appeared to slide away and, depending on how
+        // tall the panel happened to be at that moment, sometimes did and
+        // sometimes didn't.
+        //
+        // Nothing in this file ever hid that title. It was overflow.
+        //
+        // So the card is made immovable and the panel is made the thing that
+        // yields. The panel is a list in a scroll view and loses nothing by
+        // being shorter; the card is four fixed rows and has nowhere to put the
+        // loss. Its own height constraint is already breakable, which is what
+        // lets it absorb this.
+        card.setContentCompressionResistancePriority(.required, for: .vertical)
+        panel.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         panel.onClose = { [weak self] in self?.hidePanel() }
         // Closing the list and opening the keyboard *is* the new tab: there is no
         // blank page to show, so the tab starts where the address does.
@@ -176,6 +195,19 @@ final class HomeOverlayView: UIView {
         title.text = "Where to?"
         title.font = Self.rounded(27, .bold)
         title.textColor = .label
+        // The softest thing in the card's vertical chain, and so the thing that
+        // paid when the chain came up short.
+        //
+        // `title.top == content.top + 20` and `fieldContainer.top ==
+        // title.bottom + 14` are both required, which leaves the label's own
+        // height as the only give in the run from the card's top edge to its
+        // bottom. At the default 750 it was squeezed to nothing whenever the
+        // keyboard and a tall panel left the card less room than it wanted —
+        // the text vanished while `iconStack`, centred on the label, stayed
+        // exactly where it was. That is what looked like "Where to?" sliding
+        // away, and why it depended on the panel's height and on whether the
+        // favourites row was adding its fifty points.
+        title.setContentCompressionResistancePriority(.required, for: .vertical)
         content.addSubview(title)
 
         // Top-right icons. Which four is a setting; the controls are all built
